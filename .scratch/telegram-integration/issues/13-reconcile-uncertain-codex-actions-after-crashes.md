@@ -29,3 +29,9 @@ implementation. Schema availability and fake contracts are not live evidence.
 Unknown create, absent/ambiguous correlation, and unavailable cross-process control
 remain visible blockers. The pre-start active-work check is not atomic against a
 concurrent desktop start.
+
+The parent-run live probe exposed that turn history is unavailable on an
+unmaterialized new chat. A red-first wire regression now reproduces this. The
+first start on its retained creation connection uses metadata validation and
+skips unavailable persisted history; subsequent/resumed starts retain full
+history guards. Probe creation owner was closed without any turn being sent.

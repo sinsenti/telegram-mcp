@@ -18,7 +18,10 @@ thread ID or creation idempotency key. Project, title, working directory and tim
 similarity do not prove ownership. An unknown create is blocked, never replaced.
 
 Before starting, the adapter checks current metadata and paginated turns on the
-owned/resumed connection for active work. `notLoaded` and direct-input capability
+owned/resumed connection for active work. A brand-new chat retained on its
+creation connection has no persisted history before its first user message;
+only that first owned start skips turn-history readback, while retaining the
+metadata guard. Resumed chats never inherit this exception. `notLoaded` and direct-input capability
 are not proof of idleness. There is no atomic expected-idle start operation; a
 concurrent desktop start after this check remains a protocol limitation. Do not
 operate the listener and desktop on the same chat concurrently.
