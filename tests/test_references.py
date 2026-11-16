@@ -254,3 +254,65 @@ class ReferenceLifecycleTests(unittest.IsolatedAsyncioTestCase):
                         await asyncio.sleep(0.01)
         await listen(self.app,Client())
         self.assertEqual(self.writes.count('create'),1)
+
+    async def test_removal_during_pre_run_metadata_prevents_turn_and_retains_no_start_intent(self):
+        import asyncio
+        groups={10}; observing=asyncio.Event(); release=asyncio.Event()
+        async def allowed(folder): return groups.copy()
+        async def self_id(): return 77
+        async def latest(group): return 100
+        async def observe(chat,cwd):
+            observing.set(); await release.wait()
+            return dict(chat_id=chat,cwd=str(cwd),project_id='server-help',name='Prepared chat')
+        self.telegram.allowed_groups=allowed
+        self.telegram.self_id=self_id; self.telegram.latest_message_id=latest
+        self.codex.observe_chat=observe
+        await self.app.handle({'action':'monitor_enable'})
+        worker=asyncio.create_task(self.task())
+        try:
+            await asyncio.wait_for(observing.wait(),2)
+            groups.clear()
+            await self.app.handle({'action':'folder_changed'})
+        finally:
+            release.set(); result=await worker
+        self.assertEqual(result['status'],'paused',result)
+        self.assertEqual(self.codex.runs,[])
+        self.assertNotIn('client_request_id',result)
+        self.assertNotEqual(result['phase'],'executing')
+
+    async def test_second_application_reference_refresh_preserves_concurrent_completion(self):
+        import asyncio
+        from telegram_integration.application import Application
+        from telegram_integration.contracts import RunResult
+        started=asyncio.Event(); finish=asyncio.Event(); observing=asyncio.Event(); release=asyncio.Event()
+        async def run(*args,**kwargs):
+            started.set(); await finish.wait(); return RunResult('Done','Preserved final document','completed-turn')
+        self.codex.run=run
+        other_codex=test_routing.Codex()
+        async def observe(chat,cwd):
+            observing.set(); await release.wait()
+            return dict(chat_id=chat,cwd=str(cwd),project_id='server-help',name='Changed from desktop')
+        other_codex.observe_chat=observe
+        other=Application(self.root/'db',self.root/'tasks',self.telegram,other_codex,catalog=self.catalog)
+        worker=asyncio.create_task(self.task())
+        refresh=None
+        try:
+            await asyncio.wait_for(started.wait(),2)
+            refresh=asyncio.create_task(other.handle({'action':'sync_references'}))
+            await asyncio.wait_for(observing.wait(),2)
+            finish.set(); completed=await asyncio.wait_for(worker,2)
+            release.set(); await asyncio.wait_for(refresh,2)
+            retained=await self.app.handle({'action':'status','task_id':completed['task_id']})
+            self.assertEqual((retained['status'],retained['phase'],retained['turn_id']),('finished','complete','completed-turn'))
+            self.assertEqual(retained['report_ids'],completed['report_ids'])
+            from pathlib import Path
+            self.assertEqual(Path(retained['document']).read_text(),'Preserved final document')
+            self.assertIn('Status: finished',self.references['80'])
+            self.assertIn('Changed from desktop',self.references['80'])
+            self.assertEqual(self.writes.count('create'),1)
+            self.assertEqual(other_codex.runs,[])
+        finally:
+            finish.set(); release.set()
+            await worker
+            if refresh: await refresh
+            await other.close()
