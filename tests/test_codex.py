@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -9,7 +10,11 @@ from telegram_integration.contracts import Blocked
 
 
 SERVER = r'''
-import json, sys
+import json, os, sys
+from pathlib import Path
+Path('server.pid').write_text(str(os.getpid()))
+loaded=False
+rollout=Path("rollout.json")
 for line in sys.stdin:
     m=json.loads(line)
     if 'id' not in m:
@@ -21,14 +26,25 @@ for line in sys.stdin:
         print(json.dumps({'id':m['id'],'error':{'message':'settings overridden'}}), flush=True)
         continue
     result={}
-    if method in ('thread/start', 'thread/resume'):
+    if method=='thread/start':
+        if sys.argv[-1]=='reject':
+            print(json.dumps({'id':m['id'],'error':{'message':'cannot create thread'}}), flush=True)
+            continue
+        loaded=True
+        result={'thread':{'id':'chat-actual'}}
+    elif method=='thread/resume':
+        if not rollout.exists():
+            print(json.dumps({'id':m['id'],'error':{'message':'no rollout found'}}), flush=True)
+            continue
+        loaded=True
         result={'thread':{'id':'chat-actual'}}
     elif method=='turn/start':
-        if p['threadId']!='chat-actual':
+        if not loaded or p['threadId']!='chat-actual':
             raise RuntimeError('wrong chat')
         if sys.argv[-1]=='approval':
             print(json.dumps({'id':99,'method':'item/commandExecution/requestApproval','params':{'threadId':'chat-actual','turnId':'turn-actual','reason':'Needs permission'}}), flush=True)
             continue
+        rollout.write_text('materialized')
         result={'turn':{'id':'turn-actual'}}
         print(json.dumps({'method':'item/completed','params':{'threadId':'chat-actual','turnId':'turn-actual','item':{'type':'agentMessage','phase':'commentary','text':'Working'}}}), flush=True)
     print(json.dumps({'id':m['id'],'result':result}), flush=True)
@@ -52,6 +68,15 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result.turn_id, 'turn-actual')
             self.assertEqual(result.explanation, 'Done.')
             self.assertEqual(result.markdown, '# Result\n\n42')
+            first_pid=int((path/'server.pid').read_text())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(first_pid,0)
+            await codex.aclose()
+            resumed=CodexAppServer(command=[sys.executable, str(script), 'success'])
+            again=await resumed.run(chat, path, 'Continue the answer')
+            self.assertEqual(again.explanation, 'Done.')
+            self.assertNotEqual(int((path/'server.pid').read_text()), first_pid)
+            await resumed.aclose()
 
     async def test_permission_decision_is_a_blocker_instead_of_implicit_approval(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -59,5 +84,35 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
             script=path/'server.py'
             script.write_text(SERVER)
             codex=CodexAppServer(command=[sys.executable, str(script), 'approval'])
+            chat=await codex.create_chat(path)
             with self.assertRaisesRegex(Blocked, 'Needs permission'):
-                await codex.run('chat-actual', path, 'Run a task')
+                await codex.run(chat, path, 'Run a task')
+            with self.assertRaises(ProcessLookupError):
+                os.kill(int((path/'server.pid').read_text()),0)
+            await codex.aclose()
+
+    async def test_shutdown_releases_a_chat_waiting_for_its_first_turn(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)
+            script=path/'server.py'
+            script.write_text(SERVER)
+            codex=CodexAppServer(command=[sys.executable,str(script),'success'])
+            await codex.create_chat(path)
+            pid=int((path/'server.pid').read_text())
+            os.kill(pid,0)
+            await codex.aclose()
+            with self.assertRaises(ProcessLookupError):
+                os.kill(pid,0)
+            await codex.aclose()
+
+    async def test_failed_creation_releases_its_owned_server(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)
+            script=path/'server.py'
+            script.write_text(SERVER)
+            codex=CodexAppServer(command=[sys.executable,str(script),'reject'])
+            with self.assertRaisesRegex(Blocked,'cannot create thread'):
+                await codex.create_chat(path)
+            with self.assertRaises(ProcessLookupError):
+                os.kill(int((path/'server.pid').read_text()),0)
+            await codex.aclose()

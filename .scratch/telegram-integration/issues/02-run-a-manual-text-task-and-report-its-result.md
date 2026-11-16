@@ -25,10 +25,19 @@ Implemented the manual text slice in `telegram_integration/`, with `Application.
 
 Telethon resolves stable folder IDs, effective group membership, and actual peers; both explanation and document effects independently recheck current access, including after file upload. Raw reply requests carry source and topic identity. The Codex stdio adapter creates/resumes actual chat IDs without overriding configured model/permission settings. Permission requests and execution blockers surface as blocked outcomes; execution blockers are also sent to the source while access remains.
 
-Verification: `.venv/bin/python -m unittest discover -s tests -v` passes 12 tests (real temporary SQLite/files, external fakes, fake executable app-server wire contract, Telethon 1.45.0 TL constructor contracts, thin MCP envelope). Editable installation and CLI help were exercised. The initial application, MCP, Telegram, and app-server tracer tests failed before their implementations were added.
+Verification: `.venv/bin/python -m unittest discover -s tests -v` passes 18 tests (real temporary SQLite/files, external fakes, fake executable app-server wire contract, Telethon 1.45.0 TL constructor contracts, thin MCP envelope). Editable installation and CLI help were exercised. The initial application, MCP, Telegram, and app-server tracer tests failed before their implementations were added.
 
 ## Remaining acceptance
 
 Status remains **needs-info** because actual account login, selected-folder behavior, historical reads, and Telegram source reply/Markdown upload have not been exercised with explicit live authorization. No Telegram messages or Codex chats were created during implementation. The preserved desktop test remains prior evidence only. Checked implementation items above describe hermetic behavior, not live acceptance.
 
 Run one integration process at a time in this stage. Complete reply/topic retrieval belongs to 03; attachment interpretation to 04; routing and monitoring/reconciliation remain in their existing tickets. Interrupted or uncertain actions retain progress and block follow-up rather than retry blindly. Stable outgoing random-ID persistence/reconciliation is intentionally deferred to 14. Setup and the exact manual commands are in `README.md`.
+
+
+## Review corrections
+
+Corrected the first-turn lifecycle: `thread/start` retains its owning app-server connection while the application saves the returned chat ID, then starts the first turn on that same connection. Later turns can resume the materialized chat in a fresh process. The adapter releases owned processes on execution completion, failure, or asynchronous application shutdown. A fake wire server now rejects resume before the first turn has created a rollout, proving this regression would fail under the previous lifecycle; it also verifies later-process resume and process cleanup. Configured model and approval settings remain inherited without overrides.
+
+Corrected selected-media classification: Telegram web previews remain text input, including previews that may expose photo/document assets. Genuine attached photos/documents and unsupported media still block the text-only slice. Constructor-contract and application-seam cases cover that distinction and the attachment blocker.
+
+Review verification: all 18 hermetic tests pass. No live Codex chat or Telegram action was created. Status remains **needs-info** pending the existing live acceptance requirements above.

@@ -42,7 +42,7 @@ async def run(args):
             print(json.dumps(await app.handle(command),ensure_ascii=False))
     finally:
         if app:
-            app.close()
+            await app.close()
         await client.disconnect()
 
 def main():

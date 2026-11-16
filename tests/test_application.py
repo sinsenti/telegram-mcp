@@ -22,6 +22,8 @@ class Telegram:
         return '501'
 
 class Codex:
+    async def aclose(self):
+        pass
     def __init__(self):
         self.chats = []
         self.runs = []
@@ -40,7 +42,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.app = Application(self.root/'state.sqlite', self.root/'tasks', self.telegram, self.codex)
         await self.app.handle({'action':'configure', 'folder_id':7})
     async def asyncTearDown(self):
-        self.app.close()
+        await self.app.close()
         self.tmp.cleanup()
     async def test_historical_text_and_denied_group(self):
         context = await self.app.handle({'action':'read', 'group_id':10, 'message_id':42})
@@ -54,7 +56,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first['chat_id'], 'chat-actual-123')
         self.assertEqual(Path(first['document']).read_text(), '# Hello\nWelcome!')
         self.assertEqual(self.telegram.reports[0][:2], (10,42))
-        self.app.close()
+        await self.app.close()
         self.app = Application(self.root/'state.sqlite',self.root/'tasks',self.telegram,self.codex)
         second = await self.app.handle({'action':'followup','task_id':first['task_id'],'message_id':43})
         self.assertEqual(second['status'], 'finished')
@@ -108,3 +110,12 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         result = await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
         self.assertEqual(result['status'],'blocked')
         self.assertEqual(self.telegram.reports,[(10,42,'Blocked: Permission decision required')])
+
+    async def test_attached_input_blocks_before_starting_codex(self):
+        async def attached(group_id,message_id):
+            return Message(group_id,message_id,'Use the attachment',has_attachment=True)
+        self.telegram.message=attached
+        result=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+        self.assertEqual(result['status'],'blocked')
+        self.assertIn('attachment',result['reason'])
+        self.assertEqual(self.codex.chats,[])

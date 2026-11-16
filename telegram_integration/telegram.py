@@ -74,7 +74,12 @@ class TelethonAdapter:
             topic_id=getattr(header,'reply_to_top_id',None) or header.reply_to_msg_id
         if isinstance(message.action,types.MessageActionTopicCreate):
             topic_id=message.id
-        return Message(message.chat_id,message.id,message.raw_text or '',bool(message.media),topic_id)
+        # Web previews enrich the selected URL's text; even a preview containing
+        # a photo/document is not a separately selected attachment. Other media
+        # (including unsupported types) must still block this text-only slice.
+        has_attachment = message.media is not None and not isinstance(
+            message.media, (types.MessageMediaWebPage, types.MessageMediaEmpty))
+        return Message(message.chat_id,message.id,message.raw_text or '',has_attachment,topic_id)
 
     @staticmethod
     def _message_id(result):
