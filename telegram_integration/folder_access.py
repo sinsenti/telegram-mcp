@@ -1,7 +1,6 @@
 """Durable observed revocation; remote operations already accepted cannot be undone."""
 import json
 from pathlib import Path
-from .contracts import Blocked
 
 class FolderAccess:
     def __init__(self, app):
@@ -19,7 +18,7 @@ class FolderAccess:
         row=self.app.db.execute('SELECT data FROM tasks WHERE id=?',(task['task_id'],)).fetchone()
         if row:
             previous=json.loads(row[0])
-            if previous.get('run')==task.get('run') and previous.get('interruption') and not task.get('interruption'):
+            if previous.get('run')==task.get('run') and previous.get('interruption') and (not task.get('interruption') or task['interruption'].get('status')=='requested'):
                 task['interruption']=previous['interruption']
 
     async def revoke(self, group):

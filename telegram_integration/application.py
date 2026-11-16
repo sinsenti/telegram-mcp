@@ -61,6 +61,11 @@ class Application:
         if not self.folder_access.state(group_id)[1]:
             raise Blocked('Group access was revoked during access validation')
 
+    async def _task_access(self, task):
+        await self._access(task['group_id'])
+        if task.get('access_epoch',0) != self.folder_access.state(task['group_id'])[0]:
+            raise Blocked('Task is paused after folder removal; a fresh request is required')
+
     async def _read(self, group_id, message_id):
         await self._access(group_id)
         message = await self.telegram.message(group_id, message_id)
@@ -214,6 +219,7 @@ class Application:
             raise Blocked('Completed report document changed; original payload is required')
 
     async def _deliver_reports(self, task):
+        await self._task_access(task)
         if not task.get('reporting_version') and len(task.get('report_ids',[]))<2:
             raise Blocked('Legacy task reporting lacks durable operation identity; inspect Telegram manually')
         if len(task.get('report_ids',[]))<2:
@@ -413,7 +419,7 @@ class Application:
 
     async def _start_captured(self, task, text, inputs):
         """Initiate each external operation only after its durable intent exists."""
-        await self._access(task['group_id'])
+        await self._task_access(task)
         if task['chat_id'] is None:
             if task.get('codex_create_intent'):
                 raise Blocked('Codex chat creation outcome is unresolved; no replacement chat is safe')
@@ -422,7 +428,7 @@ class Application:
             task['chat_id'] = (await self.codex.create_chat(Path(task['cwd']),project_id=task['project_id'])
                                if task.get('project_id') else await self.codex.create_chat(Path(task['folder'])))
             self._save(task)
-        await self._access(task['group_id'])
+        await self._task_access(task)
         if task.get('client_request_id'):
             raise Blocked('Codex turn start outcome needs reconciliation before another turn can start')
         task.update(phase='executing',client_request_id=str(uuid.uuid4()))
@@ -622,6 +628,7 @@ class Application:
                         'media_id':attachment.media_id,'original_name':attachment.original_name,'mime_type':attachment.mime_type,
                         'path':str(destination),'family':kind,'explicitly_unnecessary':excluded}
                 try:
+                    await self._task_access(task)
                     await self._access(item.group_id)
                     descriptor=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
                     with os.fdopen(descriptor,'wb') as stream:
@@ -681,7 +688,7 @@ class Application:
             task.update(status='blocked', reason=str(exc))
             if task.get('phase') != 'reporting':
                 try:
-                    await self._access(task['group_id'])
+                    await self._task_access(task)
                     task['blocker_report_id'] = await self._send_generated('text',task['group_id'], task['message_id'], 'Blocked: '+str(exc), task['topic_id'])
                 except Exception as report_exc:
                     task['report_blocker'] = str(report_exc)
