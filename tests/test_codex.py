@@ -190,3 +190,37 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(again['input_evidence'],[])
                 self.assertEqual(artifact,json.loads((Path(result['folder'])/'run-result-1.json').read_text()))
                 await app.close()
+
+
+class ChatCatalogContractTests(unittest.IsolatedAsyncioTestCase):
+    async def test_lists_all_scoped_pages_and_legacy_metadata_without_reading_turns(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            server = r"""
+import json,sys
+from pathlib import Path
+for line in sys.stdin:
+    m=json.loads(line)
+    if 'id' not in m: continue
+    method=m['method']; p=m.get('params',{})
+    if method=='initialize': result={}
+    elif method=='thread/list':
+        assert p['archived'] is False
+        if p['projectId']=='project':
+            if p['cursor'] is None:
+                result={'data':[{'id':'first','name':'First','projectId':'project','cwd':str(Path.cwd())}], 'nextCursor':'page2'}
+            else:
+                assert p['cursor']=='page2'
+                result={'data':[{'id':'second','name':None,'projectId':'project','cwd':str(Path.cwd())}], 'nextCursor':None}
+        else:
+            assert p['projectId'] is None and p['cwd']==str(Path.cwd())
+            result={'data':[{'id':'legacy','name':'Old','projectId':None,'cwd':str(Path.cwd())},
+                            {'id':'foreign','name':'Private','projectId':'foreign','cwd':str(Path.cwd())}], 'nextCursor':None}
+    else: raise RuntimeError('unexpected content read or write')
+    print(json.dumps({'id':m['id'],'result':result}),flush=True)
+"""
+            script=root/'server.py'; script.write_text(server)
+            adapter=CodexAppServer([sys.executable,str(script)])
+            chats=await adapter.list_chats('project',root)
+            self.assertEqual([(c['chat_id'],c['title']) for c in chats],[('first','First'),('second','second'),('legacy','Old')])
+            await adapter.aclose()
