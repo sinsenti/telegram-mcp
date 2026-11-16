@@ -63,6 +63,9 @@ class _Connection:
             await self.events.put(self.failure)
 
     async def close(self):
+        self.failure = self.failure or Blocked('Codex connection closed; inspect external outcome before retry.')
+        for future in self.pending.values():
+            if not future.done(): future.set_exception(self.failure)
         self.reader.cancel()
         await asyncio.gather(self.reader,return_exceptions=True)
 
