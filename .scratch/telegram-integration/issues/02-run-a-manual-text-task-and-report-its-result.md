@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** needs-info
+**Status:** resolved
 
 - [x] Before coding, review the full monitoring lifecycle in the spec and retain one shared application interface for manual requests and later listener events.
-- [ ] Connect the existing Telegram account, select the Codex folder by stable identity, and enforce effective membership for every resolved read and write destination.
+- [x] Connect the existing Telegram account, select the Codex folder by stable identity, and enforce effective membership for every resolved read and write destination.
 - [x] Historical selected text is available; requests outside allowed groups expose no content and perform no Telegram action.
 - [x] Create a task folder and Codex chat, return the explanation and generated Markdown to the original message, and retain the actual chat identifier.
 - [x] A manual follow-up reuses that task folder and chat; the ignored test destination is explicit and never a silent fallback for a requested real project.
@@ -29,7 +29,7 @@ Verification: `.venv/bin/python -m unittest discover -s tests -v` passes 18 test
 
 ## Remaining acceptance
 
-Status remains **needs-info** because actual account login, selected-folder behavior, historical reads, and Telegram source reply/Markdown upload have not been exercised with explicit live authorization. No Telegram messages or Codex chats were created during implementation. The preserved desktop test remains prior evidence only. Checked implementation items above describe hermetic behavior, not live acceptance.
+The initial implementation was validated hermetically. The approved live test below subsequently verified account login, selected-folder access, historical selected-text retrieval, and source-specific text/Markdown delivery. Routing, full-discussion retrieval, attachment interpretation, and automatic monitoring remain in their separate tickets.
 
 Run one integration process at a time in this stage. Complete reply/topic retrieval belongs to 03; attachment interpretation to 04; routing and monitoring/reconciliation remain in their existing tickets. Interrupted or uncertain actions retain progress and block follow-up rather than retry blindly. Stable outgoing random-ID persistence/reconciliation is intentionally deferred to 14. Setup and the exact manual commands are in `README.md`.
 
@@ -40,4 +40,10 @@ Corrected the first-turn lifecycle: `thread/start` retains its owning app-server
 
 Corrected selected-media classification: Telegram web previews remain text input, including previews that may expose photo/document assets. Genuine attached photos/documents and unsupported media still block the text-only slice. Constructor-contract and application-seam cases cover that distinction and the attachment blocker.
 
-Review verification: all 18 hermetic tests pass. No live Codex chat or Telegram action was created. Status remains **needs-info** pending the existing live acceptance requirements above.
+Review verification: all 18 hermetic tests passed before the live acceptance run below.
+
+## Answer
+
+Resolved on 2026-11-16 after the user explicitly approved one new Codex test chat and text/Markdown delivery to the selected Telegram source. [Recorded live evidence](../manual-workflow-live-test.json) identifies folder 8, group `-1003989567415`, topic 2, source message 3, the actual chat/turn IDs, and acknowledged replies 4 and 5. Both replies were read back and verified to reference source message 3 in topic 2. Downloading the uploaded Markdown yielded exactly the local result's 98 bytes and recorded SHA-256. Connected desktop readback confirmed the same completed turn in chat `01a1e427-dc70-7b23-ad61-c2782a815592`.
+
+No extra task, follow-up turn, project rename, or unrelated Telegram write was performed. The test-owned chat and result are retained. [Decision recorded in the implementation map](../map.md#decisions-so-far).

@@ -37,9 +37,9 @@ Tickets 01 and 02 can start independently. Ticket 01 must establish a supported 
 
 ## Current implementation status
 
-Tickets 01 and 02 have implementations and automated checks, but remain `needs-info`:
+Ticket 02 is resolved; ticket 01 remains `needs-info`:
 
 - 01: the experimental standalone catalog matches all 11 existing desktop projects by name and directory. A controlled real-project change still needs to demonstrate live refresh; see [catalog evidence](../../docs/research/project-catalog.md).
-- 02: the shared SQLite application, manual text workflow, CLI/MCP entry points, and Telegram/Codex adapters are implemented. Actual Telegram login, folder behavior, source replies, and Markdown delivery still need authorized live validation; see [setup](../../README.md).
+- 02: the approved live manual text task completed in one real Codex chat, and its text/Markdown replies were verified in the original Telegram topic, including a byte-for-byte file comparison; see [evidence](./manual-workflow-live-test.json).
 
-Tickets 03–14 remain unimplemented and blocked by the graph above. Hermetic checks do not close the live acceptance requirements or establish completion of a delivery stage. No new Telegram messages or Codex chats were created during implementation.
+Ticket 03 is now unblocked. Tickets 03–14 remain unimplemented. The approved test created one Codex chat and two source replies; it did not authorize project renaming or unrelated test tasks. Stage 1 still requires tickets 03 and 04.

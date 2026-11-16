@@ -1,0 +1,30 @@
+{
+  "verifiedAt": "2026-11-16T11:40:54.421196+00:00",
+  "status": "passed",
+  "folderId": 8,
+  "groupId": -1003989567415,
+  "topicId": 2,
+  "sourceMessageId": 3,
+  "sourceLink": "https://t.me/c/3989567415/2/3",
+  "taskId": "d44c5549ea3e454f894f772b34ff2d31",
+  "chatId": "01a1e427-dc70-7b23-ad61-c2782a815592",
+  "turnId": "01a1e427-df69-7680-aae3-ca5eea38ef23",
+  "resultMessages": [
+    {
+      "messageId": 4,
+      "replyToMessageId": 3,
+      "topicId": 2,
+      "hasDocument": false
+    },
+    {
+      "messageId": 5,
+      "replyToMessageId": 3,
+      "topicId": 2,
+      "hasDocument": true
+    }
+  ],
+  "markdownFileName": "result-1.md",
+  "markdownBytes": 98,
+  "markdownSha256": "61c0ee88cdea4410e0d6a25ec04ae669e633045a918f94e94baefe58eb924c03",
+  "scope": "One approved new Codex test chat and source-specific text/Markdown delivery; no project renames or additional tasks."
+}
