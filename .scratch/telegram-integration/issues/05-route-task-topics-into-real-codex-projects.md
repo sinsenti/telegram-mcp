@@ -19,3 +19,7 @@
 Routing is implemented and verified at the preapproved Application.handle seam with real SQLite/files and external adapters, including a subprocess Codex protocol fixture. See [routing contract and concrete live test plan](../../../docs/project-routing.md). The installed generated experimental protocol supports thread/start projectId and thread/read canonical projectId/cwd. Standalone reconciliation reports desktop visibility as unverified honestly.
 
 No new live chats/turns or Telegram writes were authorized for ticket 05, so live routed project placement and continuation acceptance remain pending the specific plan's authorization. Earlier tickets 01–04 evidence covers their own scopes and is not presented as proof of this new route.
+
+## Integration verification
+
+The shipped CLI/MCP constructor now injects the catalog (commit 970a31d). A real production CLI `action=project` request for the allowed test group returned the existing help server ID and `/home/user/git/personal/help` without starting a chat/turn. All 63 root tests pass, including setup/QR checks. The bounded one-new-topic, one-new-chat, two-marker-turn live test is prepared; authorization has been requested but has not yet been received. Stage-one live approvals do not cover that additional test.

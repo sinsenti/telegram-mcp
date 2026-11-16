@@ -16,4 +16,4 @@ Implementation branch: `integration/telegram-codex`. The approved spec and numbe
 
 ## Fog
 
-- Ticket 05 real-project routing is now unblocked. Tickets 05–14 remain to implement.
+- Ticket 05 routing is implemented and reviewed, with 63 tests passing and production CLI catalog injection verified. The bounded live routing/continuation/desktop-placement test is prepared and awaiting authorization. Tickets 06–14 remain blocked by the graph.
