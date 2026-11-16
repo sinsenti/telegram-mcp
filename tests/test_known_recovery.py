@@ -72,3 +72,74 @@ class KnownRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['tasks'][0]['status'],'finished',result)
         self.assertEqual(observed,[('chat-actual-123','known-turn')])
         self.assertEqual(len(self.codex.runs),1)
+
+    async def test_captured_snapshot_continues_without_recapturing_edited_source(self):
+        import asyncio
+        crash=True
+        self.telegram.lose=None
+        async def allowed(folder):
+            if crash and list((self.root/'tasks').glob('*/inputs-1.json')):
+                raise asyncio.CancelledError()
+            return {10}
+        self.telegram.allowed_groups=allowed
+        with self.assertRaises(asyncio.CancelledError):
+            await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        crash=False
+        async def edited(*args,**kwargs): raise AssertionError('Recovery must use fixed context, never refetch source')
+        self.telegram.context=edited
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'finished',result)
+        self.assertIn('Write a greeting',self.codex.runs[0][2])
+        self.assertEqual(len(self.codex.chats),1)
+        self.assertTrue((Path(result['tasks'][0]['folder'])/'context-1.json').is_file())
+
+    async def test_lost_start_ack_uses_exact_correlation_and_never_replays_start(self):
+        from types import SimpleNamespace
+        from telegram_integration.contracts import RunResult
+        remote={}
+        async def lost(chat,cwd,prompt,**kwargs):
+            remote[kwargs['client_request_id']]=(chat,cwd)
+            raise ConnectionError('accepted remotely, response lost')
+        self.codex.run=lost
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        async def find(chat,cwd,correlation):
+            self.assertEqual(remote[correlation],(chat,cwd))
+            return SimpleNamespace(turn_id='remote-turn',status='completed',result=RunResult('Found','Saved output','remote-turn'),reason=None)
+        self.codex.find_turn=find
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'finished',result)
+        self.assertEqual(len(remote),1)
+        self.assertEqual(result['tasks'][0]['chat_id'],first['chat_id'])
+
+    async def test_lost_create_ack_keeps_blocker_without_creating_replacement(self):
+        created=[]
+        async def lost(cwd):
+            created.append(cwd)
+            raise ConnectionError('chat created, response lost')
+        self.codex.create_chat=lost
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'blocked',result)
+        self.assertEqual(result['tasks'][0]['phase'],'creating_chat')
+        self.assertEqual(result['tasks'][0]['codex_create_intent'],first['codex_create_intent'])
+        self.assertEqual(len(created),1)
+
+    async def test_completed_malformed_result_remains_terminal_after_repeated_restart(self):
+        from types import SimpleNamespace
+        async def lost(chat,cwd,prompt,**kwargs):
+            await kwargs['on_turn_accepted']('known-turn')
+            self.codex.runs.append((chat,cwd,prompt))
+            raise ConnectionError('lost')
+        self.codex.run=lost
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        async def observe(*args): return SimpleNamespace(turn_id='known-turn',status='completed',result=None,reason='Malformed final output')
+        self.codex.observe_turn=observe
+        for _ in range(2):
+            await self.restart()
+            result=await self.app.handle({'action':'recover'})
+            self.assertEqual(result['tasks'][0]['status'],'blocked',result)
+            self.assertEqual(result['tasks'][0]['phase'],'terminal_result')
+        self.assertEqual(len(self.codex.runs),1)
