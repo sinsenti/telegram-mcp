@@ -16,6 +16,7 @@ async def deliver(application, event, account_id, kind='new_message'):
     return await application.handle({'action':'telegram_event','kind':kind,
         'account_id':account_id,'group_id':event.chat_id,'message_id':message.id,
         'sender_id':message.sender_id,'text':message.raw_text or '',
+        'created_at':message.date.isoformat() if getattr(message,'date',None) else None,
         'edited':bool(getattr(message,'edit_date',None)),
         'forwarded':bool(getattr(message,'fwd_from',None))})
 

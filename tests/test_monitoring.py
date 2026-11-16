@@ -23,6 +23,7 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         first=await self.event()
         self.assertEqual(first['status'],'admitted',first)
         self.assertEqual((await self.event())['status'],'duplicate')
+        self.assertEqual((await self.app.handle({'action':'monitor_status'}))['discovery_progress'],[{'group_id':10,'message_id':101}])
         await self.app.close()
         from telegram_integration.application import Application
         self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
@@ -99,3 +100,38 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await deliver(self.app,event,77))['status'],'admitted')
         event.message.id=102; event.message.edit_date='today'
         self.assertEqual((await deliver(self.app,event,77,'edited_message'))['status'],'ignored')
+    async def test_fresh_human_link_commands_share_project_binding_and_generated_exclusion(self):
+        from telegram_integration.contracts import Message
+        async def listing(project_id,cwd):
+            return [{'chat_id':'existing','title':'Existing #codex work','project_id':'server-help','cwd':str(cwd)}]
+        self.codex.list_chats=listing
+        texts={101:'#link',102:'1',103:'#codex greet'}
+        async def message(group,identity): return Message(group,identity,texts.get(identity,'#codex generated'),topic_id=2)
+        self.telegram.message=message
+        await self.app.handle({'action':'monitor_enable'})
+        choices=await self.app.handle(dict(action='telegram_event',kind='new_message',account_id=77,sender_id=77,group_id=10,message_id=101,text='#link'))
+        self.assertEqual(choices['status'],'chat_choice',choices)
+        self.assertEqual((await self.event(201))['reason'],'Integration-generated message')
+        linked=await self.app.handle(dict(action='telegram_event',kind='new_message',account_id=77,sender_id=77,group_id=10,message_id=102,text='1'))
+        self.assertEqual(linked['status'],'linked',linked)
+        await self.event(103)
+        result=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((result['status'],result['chat_id']),('finished','existing'))
+        self.assertEqual(self.codex.created,[])
+
+    async def test_reference_identity_is_excluded_even_when_title_quotes_marker(self):
+        # External metadata/Telegram fixture; real Application, store and files remain in use.
+        self.title='Research #codex notes'; self.topic='New chat'; self.references={}; self.pinned=False; self.writes=[]
+        async def observe(chat,cwd): return dict(chat_id=chat,cwd=str(cwd),project_id='server-help',name=self.title)
+        async def topic(group,identity): return self.topic
+        async def rename(group,identity,title): self.topic=title
+        async def create(group,identity,text): self.references['203']=text; return '203'
+        async def reference(group,topic,identity): return dict(text=self.references[identity],pinned=self.pinned)
+        async def pin(group,topic,identity): self.pinned=True
+        self.codex.observe_chat=observe; self.telegram.topic_title=topic; self.telegram.rename_topic=rename
+        self.telegram.create_reference=create; self.telegram.reference=reference; self.telegram.pin_reference=pin
+        await self.app.handle({'action':'monitor_enable'})
+        task=await self.app.handle(dict(action='task',destination='project',group_id=10,message_id=3))
+        result=await self.app.handle(dict(action='sync_reference',task_id=task['task_id']))
+        self.assertEqual(result['reference_sync']['reference']['message_id'],'203')
+        self.assertEqual((await self.event(203))['reason'],'Integration-generated message')
