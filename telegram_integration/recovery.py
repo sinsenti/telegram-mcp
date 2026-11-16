@@ -76,6 +76,7 @@ class Recovery:
     async def one(self, task):
         app=self.app; phase=task.get('phase')
         try:
+            if phase=='complete' and task.get('status')=='finished': return task
             if task.get('status')=='paused': return await self.paused(task)
             if phase in ('reporting','complete'):
                 return await app._handle({'action':'reconcile_reports','task_id':task['task_id']})

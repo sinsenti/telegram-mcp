@@ -636,7 +636,7 @@ class Application:
         for key in ('codex_create_intent','client_request_id','turn_id','input_evidence','result_status','explanation','document',
                     'report_ids','blocker_report_id','report_blocker','document_sha256','snapshot_sha256','terminal_error'):
             task.pop(key,None)
-        task.update(status='running', reason=None, topic_id=m.topic_id)
+        task.update(status='running', reason=None, topic_id=m.topic_id, phase='capturing_inputs')
         self._save(task)
         if c.get('request_sequence') is not None:
             self.monitoring.bind_task(c['request_sequence'],task)

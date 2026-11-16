@@ -359,3 +359,15 @@ class KnownRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(task['status'],'finished',task)
         self.assertEqual(len(self.codex.runs),1)
         self.assertEqual([(v[1],v[2]) for v in self.telegram.remote.values() if v[2]==42],[('text',42),('document',42)])
+
+    async def test_acknowledged_completed_task_stays_finished_after_access_removal(self):
+        self.telegram.lose=None
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        self.assertEqual(first['status'],'finished',first)
+        original=dict(self.telegram.remote)
+        self.telegram.allowed.clear()
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'finished',result)
+        self.assertEqual(self.telegram.remote,original)
+        self.assertEqual(len(self.codex.runs),1)
