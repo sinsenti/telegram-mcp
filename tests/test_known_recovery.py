@@ -339,3 +339,23 @@ class KnownRecoveryTests(unittest.IsolatedAsyncioTestCase):
         result=await self.app.handle({'action':'recover'})
         self.assertEqual(result['tasks'][0]['status'],'finished',result)
         self.assertEqual(len(self.codex.runs),1)
+
+    async def test_listener_startup_recovers_saved_result_before_dispatch_worker(self):
+        from telegram_integration.listener import listen
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        self.assertEqual(first['phase'],'reporting',first)
+        await self.restart()
+        async def account(): return 77
+        async def latest(group): return 100
+        async def history(group,after,limit): return []
+        self.telegram.self_id=account; self.telegram.latest_message_id=latest; self.telegram.history_page=history
+        class Client:
+            def add_event_handler(self,*args): pass
+            def remove_event_handler(self,*args): pass
+            async def catch_up(self): pass
+            async def run_until_disconnected(self): pass
+        await listen(self.app,Client())
+        task=await self.app.handle({'action':'status','task_id':first['task_id']})
+        self.assertEqual(task['status'],'finished',task)
+        self.assertEqual(len(self.codex.runs),1)
+        self.assertEqual([(v[1],v[2]) for v in self.telegram.remote.values() if v[2]==42],[('text',42),('document',42)])

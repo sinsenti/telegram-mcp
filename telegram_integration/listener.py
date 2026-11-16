@@ -49,6 +49,7 @@ async def listen(application, client, *, sync_references=False):
         while True:
             await asyncio.sleep(30)
             print(json.dumps(await application.handle({'action':'monitor_refresh'}),ensure_ascii=False),flush=True)
+            print(json.dumps(await application.handle({'action':'monitor_catch_up'}),ensure_ascii=False),flush=True)
             if sync_references:
                 print(json.dumps(await application.handle({'action':'sync_references'}),ensure_ascii=False),flush=True)
     tasks=[]
@@ -59,6 +60,8 @@ async def listen(application, client, *, sync_references=False):
             raise ValueError('Monitoring activation failed; inspect status before retrying')
         ready.set()
         await client.catch_up()
+        print(json.dumps(await application.handle({'action':'monitor_catch_up'}),ensure_ascii=False),flush=True)
+        print(json.dumps(await application.handle({'action':'recover'}),ensure_ascii=False),flush=True)
         tasks=[asyncio.create_task(worker()),asyncio.create_task(refresh())]
         await client.run_until_disconnected()
     finally:

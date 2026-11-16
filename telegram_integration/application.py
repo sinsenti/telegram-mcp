@@ -31,6 +31,8 @@ class Application:
             telegram.set_access_guard(self.folder_access.check_enabled)
         from .monitoring import Monitoring
         self.monitoring = Monitoring(self)
+        from .catchup import Catchup
+        self.catchup = Catchup(self)
         from .outgoing import Outgoing
         self.outgoing = Outgoing(self)
 
@@ -178,6 +180,9 @@ class Application:
         try:
             if action == 'telegram_send_ack':
                 return {'status':'confirmed' if self.outgoing.acknowledge(command['random_id'],command['message_id']) else 'unknown'}
+            if action == 'monitor_catch_up':
+                async with self.monitor_lock:
+                    return await self.catchup.discover(command)
             if action in ('monitor_enable','monitor_refresh','folder_changed','monitor_status','telegram_event'):
                 if action == 'monitor_status':
                     return await self.monitoring.handle(command)

@@ -1,6 +1,6 @@
 # Recover known task progress
 
-Call the shared Application boundary with `{"action":"recover"}` after reopening the same SQLite database and task workspace. An optional `task_id` limits the pass to one task. Recovery takes the same operating-system execution lock as dispatch and manual execution: another live worker makes it return `busy`, even from another process.
+Call the shared Application boundary with `{"action":"recover"}` after reopening the same SQLite database and task workspace. An optional `task_id` limits the pass to one task. The listener runs one recovery pass after readiness and catch-up, before starting its dispatch worker. Recovery takes the same operating-system execution lock as dispatch and manual execution: another live worker makes it return `busy`, even from another process.
 
 Pending requests retain their original admission sequence and are dispatched by `dispatch_pending` after recovery. A worker claim that never bound a task is returned to pending; task binding is durable before any task effect. Captured requests retain their task/project/chat identities, run number, downloaded originals and bounded context. A fully captured snapshot can continue only after validating saved hashes, current access and destination. Interrupted input capture is blocked rather than recaptured from edited Telegram history.
 
