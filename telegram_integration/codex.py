@@ -212,6 +212,9 @@ class CodexAppServer:
                 yield connection
 
     async def run(self, chat_id: str, cwd: Path, prompt: str, inputs=(), *, client_request_id=None, on_turn_accepted=None) -> RunResult:
+        # An unstarted chat has no persisted turn history yet. Only this retained
+        # creation connection proves that we have never sent its first turn.
+        newly_created = chat_id in self._pending
         async with self._chat_connection(chat_id, cwd) as connection:
             payload=[{'type':'text','text':prompt}]
             schema=deepcopy(_RESULT_SCHEMA)
@@ -252,7 +255,7 @@ Mention preserved excluded inputs in the explanation and Markdown result.
             status = metadata.get('thread',{}).get('status',{})
             if isinstance(status,dict) and status.get('type') == 'active':
                 raise Blocked('Codex chat already has active work; fixed task input cannot be started safely.')
-            turns = await self._pages(connection,'thread/turns/list', {'threadId':chat_id,'itemsView':'full','sortDirection':'desc'})
+            turns = [] if newly_created else await self._pages(connection,'thread/turns/list', {'threadId':chat_id,'itemsView':'full','sortDirection':'desc'})
             if any(turn.get('status') == 'inProgress' for turn in turns):
                 raise Blocked('Codex chat already has active work; fixed task input cannot be started safely.')
             params = {
