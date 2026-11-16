@@ -411,6 +411,31 @@ class Application:
         return {'status':'unresolved','observations':observations,
                 'reason':'Project placement could not be reconciled; inspect before continuing'}
 
+    async def _start_captured(self, task, text, inputs):
+        """Initiate each external operation only after its durable intent exists."""
+        await self._access(task['group_id'])
+        if task['chat_id'] is None:
+            if task.get('codex_create_intent'):
+                raise Blocked('Codex chat creation outcome is unresolved; no replacement chat is safe')
+            task.update(phase='creating_chat',codex_create_intent=uuid.uuid4().hex)
+            self._save(task)
+            task['chat_id'] = (await self.codex.create_chat(Path(task['cwd']),project_id=task['project_id'])
+                               if task.get('project_id') else await self.codex.create_chat(Path(task['folder'])))
+            self._save(task)
+        await self._access(task['group_id'])
+        if task.get('client_request_id'):
+            raise Blocked('Codex turn start outcome needs reconciliation before another turn can start')
+        task.update(phase='executing',client_request_id=str(uuid.uuid4()))
+        self._save(task)
+        async def accepted(turn_id):
+            task['turn_id']=turn_id
+            self._save(task)
+            if hasattr(self,'folder_access'):
+                await self.folder_access.interrupt_if_revoked(task)
+        prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'
+        return await self.codex.run(task['chat_id'],Path(task.get('cwd',task['folder'])),prompt,
+            inputs=inputs,client_request_id=task['client_request_id'],on_turn_accepted=accepted)
+
     async def _handle(self, c):
         action = c['action']
         if action == 'configure':
@@ -553,7 +578,7 @@ class Application:
         (folder/f"input-{task['run']}.txt").write_text(text)
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         # These fields describe only the current run. Earlier artifacts remain on disk.
-        for key in ('turn_id','input_evidence','result_status','explanation','document',
+        for key in ('codex_create_intent','client_request_id','turn_id','input_evidence','result_status','explanation','document',
                     'report_ids','blocker_report_id','report_blocker','document_sha256'):
             task.pop(key,None)
         task.update(status='running', reason=None, topic_id=m.topic_id)
@@ -625,18 +650,7 @@ class Application:
             if blockers:
                 raise Blocked('; '.join(blockers))
             inputs=tuple(inputs)
-            await self._access(task['group_id'])
-            if task['chat_id'] is None:
-                task['phase'] = 'creating_chat'
-                self._save(task)
-                task['chat_id'] = await self.codex.create_chat(Path(task['cwd']), project_id=task['project_id']) if task.get('project_id') else await self.codex.create_chat(folder)
-                self._save(task)
-            await self._access(task['group_id'])
-            task['phase'] = 'executing'
-            self._save(task)
-            prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'
-            cwd=Path(task.get('cwd',task['folder']))
-            result = await self.codex.run(task['chat_id'], cwd, prompt, inputs=inputs) if inputs else await self.codex.run(task['chat_id'], cwd, prompt)
+            result = await self._start_captured(task,text,inputs)
             if task.get('project_id'):
                 task['placement']=await self._placement(task)
             task.update(turn_id=result.turn_id, explanation=result.explanation,

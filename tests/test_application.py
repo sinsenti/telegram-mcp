@@ -33,8 +33,9 @@ class Codex:
     async def create_chat(self, cwd):
         self.chats.append(cwd)
         return 'chat-actual-123'
-    async def run(self, chat_id, cwd, prompt):
+    async def run(self, chat_id, cwd, prompt, inputs=(), *, client_request_id=None, on_turn_accepted=None):
         self.runs.append((chat_id, cwd, prompt))
+        if on_turn_accepted: await on_turn_accepted('turn-1')
         return RunResult('Greeting prepared.', '# Hello\nWelcome!', 'turn-1')
 
 class ApplicationTests(unittest.IsolatedAsyncioTestCase):
@@ -85,8 +86,8 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_removed_access_prevents_reporting_but_retains_result(self):
         original = self.codex.run
-        async def revoke(*args):
-            result = await original(*args)
+        async def revoke(*args,**kwargs):
+            result = await original(*args,**kwargs)
             self.telegram.allowed.clear()
             return result
         self.codex.run = revoke
@@ -106,8 +107,8 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.codex.runs),1)
     async def test_removal_between_text_and_document_prevents_upload(self):
         original = self.telegram.send_text
-        async def revoke(*args):
-            result = await original(*args)
+        async def revoke(*args,**kwargs):
+            result = await original(*args,**kwargs)
             self.telegram.allowed.clear()
             return result
         self.telegram.send_text = revoke
