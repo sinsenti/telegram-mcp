@@ -10,12 +10,15 @@ from .contracts import Blocked, CodexAdapter, TelegramAdapter, TaskInput
 from .attachments import owned_directory, family, digest, validate_evidence, FAMILIES
 
 class Application:
-    def __init__(self, database: Path, workspace: Path, telegram: TelegramAdapter, codex: CodexAdapter):
+    def __init__(self, database: Path, workspace: Path, telegram: TelegramAdapter, codex: CodexAdapter, catalog=None):
         database.parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(database)
         self.db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
         self.db.execute('CREATE TABLE IF NOT EXISTS selections (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
+        self.db.execute('CREATE TABLE IF NOT EXISTS group_projects (id INTEGER PRIMARY KEY, data TEXT NOT NULL)')
+        self.db.execute('CREATE TABLE IF NOT EXISTS topic_tasks (group_id INTEGER, topic_id INTEGER, task_id TEXT, PRIMARY KEY(group_id,topic_id))')
+        self.catalog = catalog
         self.workspace = workspace.absolute()
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
@@ -145,6 +148,66 @@ class Application:
                 # must release the unmaterialized chat's owned process too.
                 await self.codex.aclose()
 
+    async def _project(self, group, choice_id=None, choice=None):
+        await self._access(group)
+        metadata = await self.telegram.group_metadata(group)
+        if metadata.group_id != group or not isinstance(metadata.name,str) or not metadata.name:
+            raise Blocked('Telegram resolved invalid or different group metadata')
+        await self._access(group)
+        if self.catalog is None:
+            raise Blocked('A refreshable Codex project catalog is required')
+        projects = await asyncio.to_thread(self.catalog.refresh)
+        row = self.db.execute('SELECT data FROM group_projects WHERE id=?',(group,)).fetchone()
+        saved = json.loads(row[0]) if row else None
+        if choice_id is not None:
+            selection = self._selection(choice_id)
+            if selection['kind'] != 'project' or selection['group_id'] != group or type(choice) is not int or not 1 <= choice <= len(selection['projects']):
+                raise Blocked('Choose a valid project for this group')
+            selected = selection['projects'][choice-1]
+            matches = [p for p in projects if p.id == selected['project_id']]
+            if len(matches) != 1 or [str(r) for r in matches[0].roots] != [selected['cwd']]:
+                raise Blocked('Project choice changed or disappeared; refresh choices')
+            saved = selected
+        elif saved:
+            matches = [p for p in projects if p.id == saved['project_id']]
+            if len(matches) != 1 or [str(r) for r in matches[0].roots] != [saved['cwd']]:
+                saved = None
+        else:
+            matches = [p for p in projects if p.name == metadata.name]
+            if len(matches) == 1 and len(matches[0].roots) == 1:
+                saved = {'project_id':matches[0].id,'cwd':str(matches[0].roots[0])}
+        if saved is None:
+            choices = [{'project_id':p.id,'name':p.name,'cwd':str(p.roots[0])} for p in projects if len(p.roots)==1]
+            identity = self._remember({'kind':'project','group_id':group,'projects':choices})
+            return {'status':'project_choice','group_id':group,'choice_id':identity,
+                    'reason':'Choose an existing project: group name has no unique destination',
+                    'choices':[dict(p,choice=i+1) for i,p in enumerate(choices)]}
+        cwd = Path(saved['cwd'])
+        if not cwd.is_absolute() or not cwd.is_dir():
+            raise Blocked('Selected project working directory is unavailable')
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO group_projects VALUES (?,?)',(group,json.dumps(saved)))
+        return saved
+
+    async def _placement(self, task):
+        # Standalone thread/read observes canonical server assignment, not the
+        # desktop's independently cached sidebar. Never claim the latter here.
+        observations=[]
+        for _ in range(3):
+            try:
+                observed=await asyncio.wait_for(self.codex.observe_chat(task['chat_id'],Path(task['cwd'])),5)
+                observations.append(observed)
+                if observed.get('chat_id') != task['chat_id']:
+                    break
+                if observed.get('project_id') == task['project_id'] and observed.get('cwd') == task['cwd']:
+                    return {'status':'server_verified_desktop_unverified','observations':observations}
+                await asyncio.sleep(0.2)
+            except Exception as error:
+                observations.append({'error':str(error)})
+                break
+        return {'status':'unresolved','observations':observations,
+                'reason':'Project placement could not be reconciled; inspect before continuing'}
+
     async def _handle(self, c):
         action = c['action']
         if action == 'configure':
@@ -153,6 +216,8 @@ class Application:
             with self.db:
                 self.db.execute("INSERT OR REPLACE INTO settings VALUES ('folder', ?)", (str(folder),))
             return {'status':'configured', 'folder_id':folder}
+        if action == 'project':
+            return await self._project(int(c['group_id']),c.get('choice_id'),c.get('choice'))
         if action == 'status':
             return self._task(c['task_id'])
         if action == 'search':
@@ -187,17 +252,31 @@ class Application:
         if action not in ('task', 'followup'):
             raise Blocked('Unsupported command')
         if action == 'task':
-            if c.get('destination') != 'test':
-                raise Blocked('Explicit destination=test required; real-project routing is not configured')
+            if c.get('destination') not in ('test','project'):
+                raise Blocked('Explicit destination=test or destination=project required')
             source = await self._source(c)
+            project = None
+            if c['destination'] == 'project':
+                project = await self._project(source['group_id'])
+                if project.get('status') == 'project_choice':
+                    return project
+                selected = await self._read(source['group_id'],source['message_id'])
+                if selected.topic_id is None:
+                    raise Blocked('Project routing requires a Telegram topic')
+                row = self.db.execute('SELECT task_id FROM topic_tasks WHERE group_id=? AND topic_id=?',(source['group_id'],selected.topic_id)).fetchone()
+                if row:
+                    return await self._handle(dict(c,action='followup',task_id=row[0]))
             task_id = uuid.uuid4().hex
             task = {'task_id':task_id, **source,
                     'folder':str(self.workspace/task_id), 'chat_id':None, 'status':'pending', 'run':0}
+            if project:
+                task.update(project,topic_id=selected.topic_id)
         else:
             task = self._task(c['task_id'])
             can_continue=(task['status']=='blocked'
                           and task.get('phase') in ('capturing_inputs','terminal_result')
-                          and not task.get('report_blocker'))
+                          and not task.get('report_blocker')
+                          and task.get('placement',{}).get('status') != 'unresolved')
             if task['status'] != 'finished' and not can_continue:
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
@@ -207,10 +286,18 @@ class Application:
             if source['group_id'] != task['group_id']:
                 raise Blocked('Follow-up source must remain in the same group')
             task.update(source)
+        if task.get('project_id'):
+            project = await self._project(task['group_id'])
+            if project.get('status') == 'project_choice':
+                return project
+            if project.get('project_id') != task['project_id'] or project.get('cwd') != task['cwd']:
+                raise Blocked('Task destination differs from its group assignment')
         context = await self._context(task)
         if not context.complete:
             raise Blocked('Selected context is incomplete: '+str(context.reason or 'history unavailable'))
         m = next(m for m in context.messages if m.message_id == task['message_id'])
+        if task.get('project_id') and task.get('topic_id') not in (None,m.topic_id):
+            raise Blocked('Follow-up source must remain in the same topic')
         text = '\n\n'.join(item.text for item in context.messages)
         if not text.strip():
             raise Blocked('Selected message has no task text')
@@ -225,6 +312,9 @@ class Application:
             task.pop(key,None)
         task.update(status='running', reason=None, topic_id=m.topic_id)
         self._save(task)
+        if task.get('project_id'):
+            with self.db:
+                self.db.execute('INSERT OR REPLACE INTO topic_tasks VALUES (?,?,?)',(task['group_id'],m.topic_id,task['task_id']))
         try:
             inputs=[]
             task['inputs']=[]
@@ -290,12 +380,15 @@ class Application:
             if task['chat_id'] is None:
                 task['phase'] = 'creating_chat'
                 self._save(task)
-                task['chat_id'] = await self.codex.create_chat(folder)
+                task['chat_id'] = await self.codex.create_chat(Path(task['cwd']), project_id=task['project_id']) if task.get('project_id') else await self.codex.create_chat(folder)
                 self._save(task)
             task['phase'] = 'executing'
             self._save(task)
             prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'
-            result = await self.codex.run(task['chat_id'], folder, prompt, inputs=inputs) if inputs else await self.codex.run(task['chat_id'], folder, prompt)
+            cwd=Path(task.get('cwd',task['folder']))
+            result = await self.codex.run(task['chat_id'], cwd, prompt, inputs=inputs) if inputs else await self.codex.run(task['chat_id'], cwd, prompt)
+            if task.get('project_id'):
+                task['placement']=await self._placement(task)
             task.update(turn_id=result.turn_id, explanation=result.explanation,
                         result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
             (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
@@ -304,6 +397,8 @@ class Application:
             (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
             if result.status != 'completed':
                 raise Blocked(result.explanation)
+            if task.get('placement',{}).get('status') == 'unresolved':
+                raise Blocked(task['placement']['reason'])
             validate_evidence(inputs,result.input_evidence)
             for item in inputs:
                 owned_directory(Path(item.path).parent)

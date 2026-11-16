@@ -6,7 +6,7 @@ from urllib.parse import urlparse, parse_qs
 from dataclasses import replace
 from telethon import utils
 from telethon.tl import functions, types
-from .contracts import Blocked, Context, Message, Attachment
+from .contracts import Blocked, Context, Message, Attachment, GroupMetadata
 
 class TelethonAdapter:
     def __init__(self, client):
@@ -77,6 +77,14 @@ class TelethonAdapter:
         if utils.get_peer_id(peer)!=group_id:
             raise Blocked('Resolved Telegram peer differs from the allowed group')
         return peer
+
+    async def group_metadata(self, group_id):
+        peer = await self._peer(group_id)
+        entity = await self.client.get_entity(peer)
+        if utils.get_peer_id(entity) != group_id:
+            raise Blocked('Telegram resolved a different group metadata destination')
+        await self._peer(group_id)
+        return GroupMetadata(group_id, entity.title)
 
     async def message(self, group_id, message_id):
         peer=await self._peer(group_id)
