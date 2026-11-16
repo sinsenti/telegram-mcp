@@ -25,6 +25,8 @@ The user authorized running these controlled Telegram/Codex integration tests wi
 
 - [Ticket 08](./issues/08-start-fresh-telegram-requests-automatically.md#answer) is resolved after actual human-trigger admission/continuation, verified delivery and duplicate replay with no second turn. [Evidence](./monitoring-live-test.json). Controlled listener stopped after verification.
 
+- [Ticket 09](./issues/09-queue-requests-with-fixed-context-and-withdrawal.md#answer) is resolved: durable globally serialized queue, current bounded/frozen inputs, withdrawal, restart continuity and conservative unknown-outcome blocking. 93 hermetic tests passed; no additional live turns. [Queue behavior](../../docs/queue.md).
+
 ## Fog
 
-- Tickets 09 (durable serialized queue/input withdrawal) and 14 (uncertain Telegram reporting) are now unblocked. Tickets 10–13 remain behind ticket 09.
+- Tickets 10–13 are now unblocked by ticket 09. Ticket 14 (uncertain Telegram reporting) is being implemented independently.
