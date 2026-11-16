@@ -32,6 +32,8 @@ async def listen(application, client, *, sync_references=False):
         outcome=await deliver(application,event,account,'edited_message')
         print(json.dumps(outcome,ensure_ascii=False),flush=True)
     async def mapping(update):
+        if isinstance(update,(types.UpdateDialogFilter,types.UpdateDialogFilters)):
+            await application.handle({'action':'folder_changed'})
         if isinstance(update,types.UpdateMessageID):
             await application.handle({'action':'telegram_send_ack','random_id':update.random_id,'message_id':update.id})
     client.add_event_handler(mapping,events.Raw())

@@ -20,7 +20,10 @@ class Monitoring:
 
     def requires_recovery(self):
         """Unfinished external Codex work blocks every new execution owner."""
-        return self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone() is not None
+        if self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
+            return True
+        return any(task.get('phase') in ('creating_chat','executing')
+                   for (data,) in self.app.db.execute('SELECT data FROM tasks') for task in [json.loads(data)])
 
     def bind_task(self, sequence, task):
         """Persist the claimed request's task before any external task effect."""
@@ -60,7 +63,7 @@ class Monitoring:
                     'discovery_progress':[dict(group_id=r[0],message_id=r[1]) for r in app.db.execute('SELECT * FROM discovery_progress')],
                     'groups':[dict(group_id=r[0],cutoff=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM monitoring_groups')],
                     'requests':[dict(sequence=r[0],group_id=r[1],message_id=r[2],status=r[3],task_id=json.loads(r[4]).get('task_id'),outcome=json.loads(r[4]).get('outcome')) for r in app.db.execute('SELECT sequence,group_id,message_id,status,data FROM trigger_requests ORDER BY sequence')]}
-        if c['action'] in ('monitor_enable','monitor_refresh'):
+        if c['action'] in ('monitor_enable','monitor_refresh','folder_changed'):
             folder=app.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
             if not folder: raise Blocked('Select a folder before enabling monitoring')
             account=await app.telegram.self_id()
@@ -70,7 +73,15 @@ class Monitoring:
             with app.db:
                 app.db.execute("INSERT OR REPLACE INTO settings VALUES ('monitor_account',?)",(str(account),))
             groups=await app.telegram.allowed_groups(int(folder[0]))
+            known={row[0] for row in app.db.execute('SELECT group_id FROM monitoring_groups')}
+            known.update(json.loads(row[0])['group_id'] for row in app.db.execute('SELECT data FROM tasks'))
+            for group in known-groups:
+                await app.folder_access.revoke(group,interrupt=False)
+            # Gate every removed group before awaiting any remote interruption.
+            for group in known-groups:
+                await app.folder_access.interrupt_group(group)
             for group in groups:
+                app.folder_access.enable(group)
                 row=app.db.execute('SELECT status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
                 if row and row[0] not in ('disabled','readiness_pending','readiness_uncertain'): continue
                 if row and row[0] in ('readiness_pending','readiness_uncertain'):
@@ -83,10 +94,10 @@ class Monitoring:
                     ready_id=await app._send_generated('text',group,None,'Codex monitoring is ready. Post a fresh #codex request in a topic to start work.',None,operation_key=f'readiness:{group}:{cutoff}')
                 except Exception:
                     with app.db:
-                        app.db.execute("UPDATE monitoring_groups SET status='readiness_uncertain' WHERE group_id=?",(group,))
+                        app.db.execute("UPDATE monitoring_groups SET status='readiness_uncertain' WHERE group_id=? AND status!='disabled'",(group,))
                     raise
                 with app.db:
-                    app.db.execute("UPDATE monitoring_groups SET status='ready', cutoff=MAX(cutoff,?) WHERE group_id=?",(int(ready_id),group))
+                    app.db.execute("UPDATE monitoring_groups SET status='ready', cutoff=MAX(cutoff,?) WHERE group_id=? AND status!='disabled'",(int(ready_id),group))
             with app.db:
                 for (group,) in app.db.execute('SELECT group_id FROM monitoring_groups').fetchall():
                     if group not in groups:
@@ -202,5 +213,5 @@ class Monitoring:
             if task.get('status')=='blocked' and task.get('phase') in ('creating_chat','executing'):
                 status='uncertain'
         with app.db:
-            app.db.execute('UPDATE trigger_requests SET status=?,data=? WHERE sequence=?',(status,json.dumps(event),sequence))
+            app.db.execute("UPDATE trigger_requests SET status=CASE WHEN status='paused' THEN 'paused' ELSE ? END,data=? WHERE sequence=?",(status,json.dumps(event),sequence))
         return outcome

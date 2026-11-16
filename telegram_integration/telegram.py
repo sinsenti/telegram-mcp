@@ -12,6 +12,10 @@ class TelethonAdapter:
     def __init__(self, client):
         self.client = client
         self.folder_id = None
+        self.access_guard = lambda group: None
+
+    def set_access_guard(self, guard):
+        self.access_guard = guard
 
     async def self_id(self):
         return (await self.client.get_me()).id
@@ -109,11 +113,14 @@ class TelethonAdapter:
         return allowed
 
     async def _peer(self, group_id):
+        self.access_guard(group_id)
         if self.folder_id is None or group_id not in await self.allowed_groups(self.folder_id):
             raise Blocked('Group is outside the selected Telegram folder')
+        self.access_guard(group_id)
         peer=await self.client.get_input_entity(group_id)
         if utils.get_peer_id(peer)!=group_id:
             raise Blocked('Resolved Telegram peer differs from the allowed group')
+        self.access_guard(group_id)
         return peer
 
     async def group_metadata(self, group_id):

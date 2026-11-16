@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from pathlib import Path
 import test_routing
 
 class MonitoringTests(unittest.IsolatedAsyncioTestCase):
@@ -451,3 +452,71 @@ asyncio.run(main())
         self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'blocked')
         self.assertEqual((await self.app.handle(dict(action='task',destination='project',group_id=10,message_id=103)))['status'],'blocked')
         self.assertEqual(len(self.codex.created),1)
+
+    async def test_removal_during_execution_keeps_result_paused_and_readd_needs_fresh_request(self):
+        from telegram_integration.application import Application
+        from telegram_integration.contracts import Message, RunResult
+        groups={10}; started=asyncio.Event(); finish=asyncio.Event(); interruptions=[]
+        async def interrupt(chat,cwd,turn): interruptions.append((chat,turn))
+        self.codex.interrupt_turn=interrupt
+        async def allowed(folder): return groups.copy()
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        async def run(*args,**kwargs):
+            if kwargs.get('on_turn_accepted'): await kwargs['on_turn_accepted']('active-turn')
+            started.set(); await finish.wait(); return RunResult('Done','Preserved result','active-turn')
+        self.telegram.allowed_groups=allowed; self.telegram.message=message; self.codex.run=run
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        worker=asyncio.create_task(self.app.handle({'action':'dispatch_pending'}))
+        try:
+            await asyncio.wait_for(started.wait(),1)
+            groups.clear()
+            removed=await asyncio.wait_for(self.app.handle({'action':'folder_changed'}),1)
+            self.assertEqual([r['status'] for r in removed['requests']],['paused','paused'])
+        finally:
+            finish.set(); result=await worker
+        self.assertEqual(result['status'],'paused',result)
+        self.assertEqual(interruptions,[(result['chat_id'],'active-turn')])
+        self.assertEqual(result['interruption']['status'],'acknowledged')
+        self.assertEqual(Path(result['document']).read_text(),'Preserved result')
+        self.assertEqual(result.get('report_ids',[]),[])
+        await self.app.close()
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        groups.add(10)
+        # A stale membership read cannot reopen access before explicit refresh.
+        denied=await self.app.handle({'action':'read','group_id':10,'message_id':101})
+        self.assertEqual(denied['status'],'blocked')
+        self.assertEqual((await self.app.handle({'action':'status','task_id':result['task_id']}))['status'],'paused')
+        async def latest(group): return 150
+        self.telegram.latest_message_id=latest
+        refreshed=await self.app.handle({'action':'monitor_refresh'})
+        self.assertEqual(refreshed['groups'][0]['cutoff'],150)
+        self.assertEqual((await self.event(125))['status'],'ignored')
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'idle')
+        await self.event(151)
+        continued=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((continued['status'],continued['chat_id']),('finished',result['chat_id']),continued)
+
+    async def test_turn_accepted_after_removal_is_interrupted_without_group_reply(self):
+        from telegram_integration.contracts import Message, RunResult
+        groups={10}; starting=asyncio.Event(); accepted=asyncio.Event(); interruptions=[]
+        async def allowed(folder): return groups.copy()
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        async def run(chat,cwd,prompt,**kwargs):
+            starting.set(); await accepted.wait()
+            await kwargs['on_turn_accepted']('late-turn')
+            return RunResult('Stopped','Preserved partial result','late-turn',status='interrupted')
+        async def interrupt(chat,cwd,turn): interruptions.append((chat,turn))
+        self.telegram.allowed_groups=allowed; self.telegram.message=message
+        self.codex.run=run; self.codex.interrupt_turn=interrupt
+        await self.app.handle({'action':'monitor_enable'}); await self.event(101)
+        worker=asyncio.create_task(self.app.handle({'action':'dispatch_pending'}))
+        try:
+            await asyncio.wait_for(starting.wait(),1)
+            groups.clear(); await self.app.handle({'action':'folder_changed'})
+        finally:
+            accepted.set(); result=await worker
+        self.assertEqual(result['status'],'paused',result)
+        self.assertEqual(interruptions,[(result['chat_id'],'late-turn')])
+        self.assertEqual(result['result_status'],'interrupted')
+        self.assertNotIn('blocker_report_id',result)

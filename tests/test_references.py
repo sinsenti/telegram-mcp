@@ -73,8 +73,8 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
         self.telegram.rename_topic=rename
         result=await self.sync(task)
         self.assertEqual(self.references,{})
-        self.assertEqual(result['status'],'finished')
-        self.assertIn('outside',result['reference_sync']['reference']['reason'])
+        self.assertEqual(result['status'],'paused')
+        self.assertIn('disabled',result['reference_sync']['reference']['reason'])
 
     async def test_uncertain_create_is_not_duplicated_after_restart(self):
         task=await self.task()
