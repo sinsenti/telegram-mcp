@@ -281,26 +281,35 @@ class TelethonAdapter:
                 return str(update.id)
         raise Blocked('Telegram send outcome lacks a message identity; inspect source before retrying')
 
-    async def send_text(self, group_id, message_id, text, topic_id):
+    def set_outgoing_observer(self, observer):
+        self.outgoing_observer=observer
+
+    def _sent(self, result, random_id):
+        identity=self._message_id(result,random_id)
+        observer=getattr(self,'outgoing_observer',None)
+        if observer: observer(random_id,int(identity))
+        return identity
+
+    async def send_text(self, group_id, message_id, text, topic_id, *, random_id=None):
         peer=await self._peer(group_id)
         # Explanation is intentionally short; result body goes into the Markdown file.
         if len(text)>4000:
             raise Blocked('Explanation is too long for Telegram; inspect local result')
-        random_id=secrets.randbits(63)
+        random_id=secrets.randbits(63) if random_id is None else random_id
         result=await self.client(functions.messages.SendMessageRequest(peer=peer,message=text,
             random_id=random_id,reply_to=None if message_id is None else types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
-        return self._message_id(result,random_id)
+        return self._sent(result,random_id)
 
-    async def send_document(self, group_id, message_id, document: Path, topic_id):
+    async def send_document(self, group_id, message_id, document: Path, topic_id, *, random_id=None):
         await self._peer(group_id)
         uploaded=await self.client.upload_file(str(document))
         peer=await self._peer(group_id)  # Membership can change during upload.
-        random_id=secrets.randbits(63)
+        random_id=secrets.randbits(63) if random_id is None else random_id
         result=await self.client(functions.messages.SendMediaRequest(peer=peer,
             media=types.InputMediaUploadedDocument(file=uploaded,mime_type='text/markdown',
                 attributes=[types.DocumentAttributeFilename(document.name)]),message='',
             random_id=random_id,reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
-        return self._message_id(result,random_id)
+        return self._sent(result,random_id)
 
     async def topic_title(self, group_id, topic_id):
         peer=await self._peer(group_id)
@@ -320,8 +329,8 @@ class TelethonAdapter:
             if type(exc).__name__ != 'TopicNotModifiedError':
                 raise
 
-    async def create_reference(self, group_id, topic_id, text):
-        return await self.send_text(group_id,topic_id,text,topic_id)
+    async def create_reference(self, group_id, topic_id, text, *, random_id=None):
+        return await self.send_text(group_id,topic_id,text,topic_id,random_id=random_id)
 
     async def _reference_message(self, group_id, topic_id, message_id):
         peer=await self._peer(group_id)

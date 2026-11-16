@@ -127,3 +127,54 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(state['reference']['status'],'current')
         self.assertEqual(state['pin']['status'],'current')
         self.assertEqual(self.topic,'Canonical name')
+
+    async def test_lost_reference_create_ack_replays_same_identity_after_restart(self):
+        task=await self.task(); identities={}; lose=True
+        async def create(group, topic, text, *, random_id=None):
+            nonlocal lose
+            identities.setdefault(random_id,'80')
+            self.references['80']=text
+            if lose:
+                lose=False
+                raise TimeoutError('remote success; lost create acknowledgment')
+            return identities[random_id]
+        self.telegram.create_reference=create
+        first=await self.sync(task)
+        self.assertEqual(first['reference_sync']['reference']['status'],'uncertain')
+        await self.app.close()
+        from telegram_integration.application import Application
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        result=await self.sync(task)
+        self.assertEqual(result['reference_sync']['reference']['status'],'current')
+        self.assertEqual(result['reference_sync']['pin']['status'],'current')
+        self.assertEqual(len(identities),1)
+        self.assertNotIn(None,identities)
+
+    async def test_lost_edit_pin_and_rename_ack_use_remote_state_after_restart(self):
+        task=await self.task()
+        await self.sync(task)
+        self.title='Changed title'
+        original_rename=self.telegram.rename_topic
+        original_edit=self.telegram.edit_reference
+        original_pin=self.telegram.pin_reference
+        self.pinned=False
+        async def rename(*args):
+            await original_rename(*args)
+            raise TimeoutError('lost rename acknowledgment')
+        async def edit(*args):
+            await original_edit(*args)
+            raise TimeoutError('lost edit acknowledgment')
+        async def pin(*args):
+            await original_pin(*args)
+            raise TimeoutError('lost pin acknowledgment')
+        self.telegram.rename_topic=rename; self.telegram.edit_reference=edit; self.telegram.pin_reference=pin
+        await self.sync(task)  # rename and edit both succeeded remotely
+        await self.sync(task)  # edit readback allows pin, whose ack is lost
+        await self.app.close()
+        from telegram_integration.application import Application
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        result=await self.sync(task)
+        self.assertEqual(result['reference_sync']['title']['status'],'current')
+        self.assertEqual(result['reference_sync']['reference']['status'],'current')
+        self.assertEqual(result['reference_sync']['pin']['status'],'current')
+        self.assertEqual(self.writes,['create','pin','rename','edit','pin'])
