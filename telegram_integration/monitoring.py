@@ -1,7 +1,7 @@
 """Durable monitoring policy, called only through Application.handle."""
 import json
 import re
-from .contracts import Blocked
+from .contracts import Blocked, MissingMessage
 
 MARKER = re.compile(r'(?<!\w)#codex(?!\w)', re.IGNORECASE)
 
@@ -24,7 +24,7 @@ class Monitoring:
                     'held_events':[dict(group_id=r[0],message_id=r[1],reason=r[2]) for r in app.db.execute('SELECT group_id,message_id,reason FROM held_events')],
                     'discovery_progress':[dict(group_id=r[0],message_id=r[1]) for r in app.db.execute('SELECT * FROM discovery_progress')],
                     'groups':[dict(group_id=r[0],cutoff=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM monitoring_groups')],
-                    'requests':[dict(sequence=r[0],group_id=r[1],message_id=r[2],status=r[3],outcome=json.loads(r[4]).get('outcome')) for r in app.db.execute('SELECT sequence,group_id,message_id,status,data FROM trigger_requests ORDER BY sequence')]}
+                    'requests':[dict(sequence=r[0],group_id=r[1],message_id=r[2],status=r[3],task_id=json.loads(r[4]).get('task_id'),outcome=json.loads(r[4]).get('outcome')) for r in app.db.execute('SELECT sequence,group_id,message_id,status,data FROM trigger_requests ORDER BY sequence')]}
         if c['action'] in ('monitor_enable','monitor_refresh'):
             folder=app.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
             if not folder: raise Blocked('Select a folder before enabling monitoring')
@@ -89,16 +89,15 @@ class Monitoring:
             if not replay and (c.get('text','').strip()=='#link' or c.get('text','').strip().isdigit()):
                 if app.lock.locked():
                     return {'status':'held','reason':'Execution is active; resend the chat command after it finishes'}
-                async with app.lock:
-                    outcome=await app._handle(dict(c,action='chat_command'))
-                    if outcome.get('status') in ('chat_choice','linked'):
-                        source=await app._read(group,message)
-                        if outcome['status']=='chat_choice':
-                            text='Choose a Codex chat by replying with its number:\n'+'\n'.join(f"{item['choice']}. {item.get('title',item.get('chat_id','Untitled'))}" for item in outcome['choices'])
-                        else:
-                            text='Linked this topic to its selected Codex chat.'
-                        await app._send_generated('text',group,message,text,source.topic_id)
-                    return outcome
+                outcome=await app._command(dict(c,action='chat_command'))
+                if outcome.get('status') in ('chat_choice','linked'):
+                    source=await app._read(group,message)
+                    if outcome['status']=='chat_choice':
+                        text='Choose a Codex chat by replying with its number:\n'+'\n'.join(f"{item['choice']}. {item.get('title',item.get('chat_id','Untitled'))}" for item in outcome['choices'])
+                    else:
+                        text='Linked this topic to its selected Codex chat.'
+                    await app._send_generated('text',group,message,text,source.topic_id)
+                return outcome
             return {'status':'ignored','reason':'Ordinary task context'}
         raise Blocked('Unsupported monitoring command')
 
@@ -131,6 +130,8 @@ class Monitoring:
 
     async def dispatch(self):
         app=self.app
+        if app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
+            return {'status':'blocked','reason':'A previous request is still running or requires recovery before queued work can start'}
         row=app.db.execute("SELECT sequence,group_id,message_id,data FROM trigger_requests WHERE status='pending' ORDER BY sequence LIMIT 1").fetchone()
         if not row: return {'status':'idle'}
         sequence,group,message,data=row
@@ -138,22 +139,32 @@ class Monitoring:
         try:
             await app._access(group)
             trigger=await app._read(group,message)
+        except MissingMessage:
+            with app.db:
+                app.db.execute("UPDATE trigger_requests SET status='cancelled' WHERE sequence=? AND status='pending'",(sequence,))
+            return {'status':'cancelled'}
         except Exception as error:
             event['outcome']={'status':'blocked','reason':str(error)}
             with app.db:
-                app.db.execute("UPDATE trigger_requests SET status='blocked',data=? WHERE sequence=?",(json.dumps(event),sequence))
+                app.db.execute("UPDATE trigger_requests SET status='blocked',data=? WHERE sequence=? AND status='pending'",(json.dumps(event),sequence))
             return event['outcome']
         if not MARKER.search(trigger.text):
-            with app.db: app.db.execute("UPDATE trigger_requests SET status='cancelled' WHERE sequence=?",(sequence,))
+            with app.db: app.db.execute("UPDATE trigger_requests SET status='cancelled' WHERE sequence=? AND status='pending'",(sequence,))
             return {'status':'cancelled'}
         with app.db:
             claimed=app.db.execute("UPDATE trigger_requests SET status='running' WHERE sequence=? AND status='pending'",(sequence,)).rowcount
         if not claimed: return {'status':'busy'}
         try:
-            outcome=await app._handle(dict(action='task',group_id=group,message_id=message,scope='topic',destination='project',context_upper_bound=message))
+            outcome=await app._handle(dict(action='task',group_id=group,message_id=message,scope='topic',destination='project',context_upper_bound=message,request_sequence=sequence))
         except Exception as error:
             outcome={'status':'blocked','reason':str(error)}
+        event=json.loads(app.db.execute('SELECT data FROM trigger_requests WHERE sequence=?',(sequence,)).fetchone()[0])
         event['outcome']=outcome
+        status='finished' if outcome.get('status')=='finished' else 'blocked'
+        if event.get('task_id'):
+            task=app._task(event['task_id'])
+            if task.get('status')=='blocked' and task.get('phase') in ('creating_chat','executing'):
+                status='uncertain'
         with app.db:
-            app.db.execute('UPDATE trigger_requests SET status=?,data=? WHERE sequence=?',('finished' if outcome.get('status')=='finished' else 'blocked',json.dumps(event),sequence))
+            app.db.execute('UPDATE trigger_requests SET status=?,data=? WHERE sequence=?',(status,json.dumps(event),sequence))
         return outcome

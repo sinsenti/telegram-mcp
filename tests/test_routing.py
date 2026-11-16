@@ -11,7 +11,7 @@ class Telegram:
     async def allowed_groups(self, folder): return {10}
     async def group_metadata(self, group): return GroupMetadata(self.group, self.name)
     async def message(self, group, message): return Message(group,message,'Write a greeting',topic_id=2)
-    async def context(self, group, message, scope):
+    async def context(self, group, message, scope, *, upper_bound=None):
         return Context((Message(group,message,'Write a greeting',topic_id=2),))
     async def send_text(self,*args): return '1'
     async def send_document(self,*args): return '2'

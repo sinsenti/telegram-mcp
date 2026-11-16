@@ -1,10 +1,11 @@
 """Shared command boundary. Transports never implement task/access policy."""
 import asyncio
+import fcntl
 import json
 import os
 import sqlite3
 import uuid
-from dataclasses import asdict, replace
+from dataclasses import asdict
 from pathlib import Path
 from .contracts import Blocked, CodexAdapter, TelegramAdapter, TaskInput
 from .attachments import owned_directory, family, digest, validate_evidence, FAMILIES
@@ -12,6 +13,7 @@ from .attachments import owned_directory, family, digest, validate_evidence, FAM
 class Application:
     def __init__(self, database: Path, workspace: Path, telegram: TelegramAdapter, codex: CodexAdapter, catalog=None):
         database.parent.mkdir(parents=True, exist_ok=True)
+        self.execution_path = database.resolve().with_name(database.resolve().name+'.execution.lock')
         self.db = sqlite3.connect(database)
         self.db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
@@ -106,10 +108,10 @@ class Application:
         await self._access(source['group_id'])
         return source
 
-    async def _context(self, source):
+    async def _context(self, source, upper_bound=None):
         group, message = source['group_id'], source['message_id']
         await self._access(group)
-        context = await self.telegram.context(group,message,source['scope'])
+        context = await self.telegram.context(group,message,source['scope'],upper_bound=upper_bound) if upper_bound is not None else await self.telegram.context(group,message,source['scope'])
         if not context.messages or not any(m.message_id == message for m in context.messages):
             raise Blocked('Selected Telegram message is missing from task context')
         if any(m.group_id != group for m in context.messages):
@@ -170,13 +172,26 @@ class Application:
                 return self._task(command['task_id'])
             if self.lock.locked():
                 return {'status':'busy','reason':'Another execution owns the Codex adapter'}
-            async with self.lock:
+            # A distinct open file description per claim gives mutual exclusion
+            # across Application instances and processes. The OS releases it on
+            # process death; never unlink the shared inode while an owner runs.
+            with self.execution_path.open('a+b') as ownership:
                 try:
-                    if action == 'dispatch_pending':
-                        return await self.monitoring.dispatch()
-                    return await self._handle(command)
+                    fcntl.flock(ownership,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return {'status':'busy','reason':'Another execution owns this state directory'}
+                try:
+                    async with self.lock:
+                        try:
+                            if action in ('task','followup','chat_command','link') and self.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
+                                return {'status':'blocked','reason':'A previous automatic request requires recovery before manual execution'}
+                            if action == 'dispatch_pending':
+                                return await self.monitoring.dispatch()
+                            return await self._handle(command)
+                        finally:
+                            await self.codex.aclose()
                 finally:
-                    await self.codex.aclose()
+                    fcntl.flock(ownership,fcntl.LOCK_UN)
         except Exception as exc:
             return {'status':'blocked','reason':str(exc)}
 
@@ -394,7 +409,16 @@ class Application:
             if task.get('phase') not in ('reporting','complete') or not task.get('document'):
                 raise Blocked('Task has no completed result awaiting reporting')
             try:
-                return await self._deliver_reports(task)
+                await self._deliver_reports(task)
+                for sequence,data in self.db.execute("SELECT sequence,data FROM trigger_requests WHERE status='blocked'").fetchall():
+                    event=json.loads(data)
+                    previous=event.get('outcome',{})
+                    if (event.get('task_id',previous.get('task_id')) == task['task_id']
+                            and previous.get('run') == task['run'] and previous.get('phase') == 'reporting'):
+                        event['outcome']=task
+                        with self.db:
+                            self.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(event),sequence))
+                return task
             except Exception as exc:
                 task.update(status='blocked',reason=str(exc))
                 self._save(task)
@@ -490,9 +514,9 @@ class Application:
             chats = await self._chat_choices(project)
             if not any(chat['chat_id'] == task['chat_id'] for chat in chats):
                 raise Blocked('Linked chat no longer belongs to the assigned project')
-        context = await self._context(task)
-        if c.get('context_upper_bound') is not None:
-            context = replace(context,messages=tuple(m for m in context.messages if m.message_id<=c['context_upper_bound']))
+        context = await self._context(task,c.get('context_upper_bound'))
+        if c.get('context_upper_bound') is not None and any(m.message_id>c['context_upper_bound'] for m in context.messages):
+            raise Blocked('Telegram returned context beyond the request boundary')
         if not context.complete:
             raise Blocked('Selected context is incomplete: '+str(context.reason or 'history unavailable'))
         m = next(m for m in context.messages if m.message_id == task['message_id'])
@@ -512,6 +536,14 @@ class Application:
             task.pop(key,None)
         task.update(status='running', reason=None, topic_id=m.topic_id)
         self._save(task)
+        if c.get('request_sequence') is not None:
+            # Explicit worker identity binds only its own admission to this task,
+            # before downloads or any external Codex effect can start.
+            with self.db:
+                row=self.db.execute('SELECT data FROM trigger_requests WHERE sequence=?',(c['request_sequence'],)).fetchone()
+                request=json.loads(row[0])
+                request['task_id']=task['task_id']
+                self.db.execute('UPDATE trigger_requests SET data=? WHERE sequence=?',(json.dumps(request),c['request_sequence']))
         if task.get('project_id'):
             with self.db:
                 self.db.execute('INSERT OR REPLACE INTO topic_tasks VALUES (?,?,?)',(task['group_id'],m.topic_id,task['task_id']))
@@ -577,11 +609,13 @@ class Application:
             if blockers:
                 raise Blocked('; '.join(blockers))
             inputs=tuple(inputs)
+            await self._access(task['group_id'])
             if task['chat_id'] is None:
                 task['phase'] = 'creating_chat'
                 self._save(task)
                 task['chat_id'] = await self.codex.create_chat(Path(task['cwd']), project_id=task['project_id']) if task.get('project_id') else await self.codex.create_chat(folder)
                 self._save(task)
+            await self._access(task['group_id'])
             task['phase'] = 'executing'
             self._save(task)
             prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'

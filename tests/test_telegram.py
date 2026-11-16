@@ -143,6 +143,10 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         topic=await adapter.context(-1000000000010,1,'topic')
         self.assertEqual([m.text for m in topic.messages],['','General task'])
         self.assertTrue(topic.complete)
+        bounded=await adapter.context(-1000000000010,9,'topic',upper_bound=9)
+        self.assertEqual([m.message_id for m in bounded.messages],[9])
+        histories=[r for r in client.requests if isinstance(r,functions.messages.GetHistoryRequest)]
+        self.assertEqual([r.max_id for r in histories],[0,0,10,10])
         linked=await adapter.resolve_link('https://t.me/project/1/9')
         self.assertEqual((linked.topic_id,linked.message_id,linked.is_topic_root),(1,9,False))
         await adapter.search(-1000000000010,'task')
@@ -277,3 +281,32 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(acknowledged,[(456,501),(456,501),(789,501)])
         sends=[r for r in client.requests if isinstance(r,(functions.messages.SendMessageRequest,functions.messages.SendMediaRequest))]
         self.assertEqual([r.random_id for r in sends],[456,456,789])
+    async def test_bounded_topic_context_limits_every_history_rpc(self):
+        class BoundedClient(Client):
+            async def __call__(self, request):
+                if isinstance(request,functions.messages.GetRepliesRequest):
+                    self.requests.append(request)
+                    if request.offset_id:
+                        return NS(messages=[])
+                    messages=[]
+                    for identity,text in [(42,'Current trigger'),(41,'Corrected preparation')]:
+                        messages.append(NS(id=identity,chat_id=-1000000000010,raw_text=text,media=None,
+                            reply_to=NS(reply_to_top_id=5,forum_topic=True,reply_to_msg_id=5),action=None))
+                    return NS(messages=messages)
+                return await super().__call__(request)
+        client=BoundedClient(); adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        context=await adapter.context(-1000000000010,42,'topic',upper_bound=42)
+        self.assertEqual([m.message_id for m in context.messages],[5,41,42])
+        self.assertEqual([r.max_id for r in client.requests if isinstance(r,functions.messages.GetRepliesRequest)],[43,43])
+
+    async def test_confirmed_missing_message_is_distinct_from_transport_failure(self):
+        from telegram_integration.contracts import MissingMessage
+        class MissingClient(Client):
+            async def get_messages(self,peer,ids): return None
+        client=MissingClient(); adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        with self.assertRaises(MissingMessage): await adapter.message(-1000000000010,42)
+        async def failed(peer,ids): raise TimeoutError('network unavailable')
+        client.get_messages=failed
+        with self.assertRaises(TimeoutError): await adapter.message(-1000000000010,42)
