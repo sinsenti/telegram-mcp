@@ -39,10 +39,18 @@ history, exact client-ID matching, malformed completed output, and concurrent
 owned-connection interruption. Application tests use real SQLite/task folders.
 These checks establish integration behavior, not production-server guarantees.
 
-Read-only installed-server evidence in
-`/tmp/telegram-implementation-research/codex-recovery-readonly-probe.json` recovered
-a completed structured result through paginated turn/item history. That existing
-user message had a null client ID. A real supplied-client-ID persistence test and
-owned-connection interruption/terminal-observation test remain required. No schema
-inspection or fake response is proof of those capabilities. Coordinate live probes
-with the parent task so they cannot overlap another listener or Codex test.
+Live evidence in `.scratch/telegram-integration/codex-recovery-live-test.json`
+confirms that a supplied UUID persisted as the user-message client ID: exact
+history correlation recovered the accepted turn and the same structured marker.
+On a resumed test-owned chat, an immediate same-owner interrupt received an
+acknowledgment and a terminal interrupted event before that owner was closed;
+subsequent exact history readback also returned interrupted.
+
+Fresh creation-owner control behaves differently in the tested installation:
+interruption returned “no active turn to interrupt” and same-owner paginated
+history returned “list_turns is not supported yet” while the turn continued to
+completion. A later interrupted status after a callback exception closed the
+owner does not prove that the rejected interrupt caused it. Fresh-owner control
+remains a separate acceptance gap under investigation; the adapter preserves
+such rejections as unresolved control outcomes. Cross-process control and atomic
+protection against concurrent desktop starts remain unverified.

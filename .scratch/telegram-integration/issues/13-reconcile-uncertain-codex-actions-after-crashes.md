@@ -4,13 +4,13 @@
 
 **Blocked by:** 09: Queue requests with fixed context and withdrawal.
 
-**Status:** claimed
+**Status:** resolved
 
-- [ ] Persist outgoing operation intent and recoverable chat/turn identities around creation and execution transitions.
-- [ ] Inject remote success followed by lost acknowledgment for chat creation and turn start/completion, not only ordinary failures.
-- [ ] Reconcile through available Codex evidence before retrying; continue a known chat/turn instead of creating a replacement.
-- [ ] Expose an unresolved recovery blocker when the outcome cannot be determined; do not claim strict exactly-once behavior.
-- [ ] Demonstrate restart recovery using real durable storage and observable Codex effects through the shared interface.
+- [x] Persist outgoing operation intent and recoverable chat/turn identities around creation and execution transitions.
+- [x] Inject remote success followed by lost acknowledgment for chat creation and turn start/completion, not only ordinary failures.
+- [x] Reconcile through available Codex evidence before retrying; continue a known chat/turn instead of creating a replacement.
+- [x] Expose an unresolved recovery blocker when the outcome cannot be determined; do not claim strict exactly-once behavior.
+- [x] Demonstrate restart recovery using real durable storage and observable Codex effects through the shared interface.
 
 ## Comments
 
@@ -35,3 +35,19 @@ unmaterialized new chat. A red-first wire regression now reproduces this. The
 first start on its retained creation connection uses metadata validation and
 skips unavailable persisted history; subsequent/resumed starts retain full
 history guards. Probe creation owner was closed without any turn being sent.
+
+## Answer
+
+Resolved with durable intents/accepted identities, exact paginated correlation
+and result readback, and the integrated ticket-11 restart reconciler. Real SQLite
+reconstruction tests cover remote create success/lost acknowledgment, accepted
+turn/lost completion acknowledgment, and missing acceptance recovered by exact
+UUID without replaying turn/start. Unknown create, absent/ambiguous correlation
+and completed output without a usable result remain blockers, never blind retries.
+
+[Actual adapter evidence](../codex-recovery-live-test.json) verifies supplied UUID
+persistence and recovery of the same accepted turn/result. It also separates
+acknowledged terminal interruption on a resumed owner from rejected fresh-owner
+control and owner-shutdown artifacts. Fresh-owner interruption is a ticket-12
+control acceptance gap; no exactly-once or atomic concurrent-start guarantee is
+claimed. See [recovery behavior](../../../docs/codex-recovery.md).
