@@ -1,6 +1,6 @@
 # Telegram-to-Codex task integration
 
-Status: ready-for-agent
+Status: implemented
 
 ## Problem Statement
 
@@ -258,4 +258,4 @@ The queue ordering tie-break and re-addition policy above are explicit operation
 
 Primary technical references are Telegram's [folder model](https://core.telegram.org/api/folders), [forum topics](https://core.telegram.org/api/forum), and [topic editing](https://core.telegram.org/method/messages.editForumTopic), plus the [Codex app-server protocol](https://learn.chatgpt.com/docs/app-server) and [desktop chat deep links](https://learn.chatgpt.com/docs/app/commands#deep-links). The preserved local test evidence is authoritative for what was actually verified on this installation.
 
-The user confirmed the shared application testing seam. This spec is published to the configured local Markdown tracker as ready for agent work. Ticket decomposition and application implementation are subsequent work.
+The user confirmed the shared application testing seam. This spec is implemented through the fourteen local tickets. Their acceptance evidence and documented production protocol limits are linked from tickets.md.
