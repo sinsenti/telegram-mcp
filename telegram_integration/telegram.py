@@ -283,3 +283,54 @@ class TelethonAdapter:
                 attributes=[types.DocumentAttributeFilename(document.name)]),message='',
             random_id=secrets.randbits(63),reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
         return self._message_id(result)
+
+    async def topic_title(self, group_id, topic_id):
+        peer=await self._peer(group_id)
+        result=await self.client(functions.messages.GetForumTopicsByIDRequest(peer=peer,topics=[topic_id]))
+        topics=[t for t in result.topics if t.id==topic_id and hasattr(t,'title')]
+        if len(topics)!=1:
+            raise Blocked('Linked Telegram topic is missing or inaccessible')
+        return topics[0].title
+
+    async def rename_topic(self, group_id, topic_id, title):
+        if not title or len(title.encode('utf-8'))>128:
+            raise Blocked('Topic name must contain 1–128 UTF-8 bytes')
+        peer=await self._peer(group_id)
+        try:
+            await self.client(functions.messages.EditForumTopicRequest(peer=peer,topic_id=topic_id,title=title))
+        except Exception as exc:
+            if type(exc).__name__ != 'TopicNotModifiedError':
+                raise
+
+    async def create_reference(self, group_id, topic_id, text):
+        return await self.send_text(group_id,topic_id,text,topic_id)
+
+    async def _reference_message(self, group_id, topic_id, message_id):
+        peer=await self._peer(group_id)
+        raw=await self.client.get_messages(peer,ids=int(message_id))
+        if raw is None or raw.id!=int(message_id) or raw.chat_id!=group_id:
+            raise Blocked('Reference message is missing or has a different identity')
+        normalized=self._normalize(raw)
+        if (normalized.topic_id or 1)!=topic_id or not getattr(raw,'out',False):
+            raise Blocked('Reference is not an owned message in the linked topic')
+        return raw
+
+    async def reference(self, group_id, topic_id, message_id):
+        raw=await self._reference_message(group_id,topic_id,message_id)
+        return {'text':raw.raw_text or '', 'pinned':bool(getattr(raw,'pinned',False))}
+
+    async def edit_reference(self, group_id, topic_id, message_id, text):
+        await self._reference_message(group_id,topic_id,message_id)
+        if len(text)>4000:
+            raise Blocked('Full chat reference exceeds Telegram message limit')
+        peer=await self._peer(group_id)
+        try:
+            await self.client(functions.messages.EditMessageRequest(peer=peer,id=int(message_id),message=text,no_webpage=True))
+        except Exception as exc:
+            if type(exc).__name__ != 'MessageNotModifiedError':
+                raise
+
+    async def pin_reference(self, group_id, topic_id, message_id):
+        await self._reference_message(group_id,topic_id,message_id)
+        peer=await self._peer(group_id)
+        await self.client(functions.messages.UpdatePinnedMessageRequest(peer=peer,id=int(message_id),silent=True))
