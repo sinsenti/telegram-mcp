@@ -50,10 +50,12 @@ class Monitoring:
                     request['outcome']=task
                     app.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(request),sequence))
 
-    async def handle(self, c, *, replay=False, commit=True):
+    async def handle(self, c, *, replay=False, commit=True, access_checked=False):
         app=self.app
         if c['action']=='monitor_status':
-            return {'status':'monitoring','generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
+            return {'status':'monitoring','catchup_uncertainties':[dict(group_id=g,message_id=m,reason=r) for g,m,r in app.db.execute('SELECT * FROM catchup_uncertainties ORDER BY group_id,message_id')],
+                    'catchup_progress':[dict(group_id=g,cutoff=c,message_id=m) for g,c,m in app.db.execute('SELECT * FROM catchup_progress ORDER BY group_id')],
+                    'generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
                     'held_events':[dict(group_id=r[0],message_id=r[1],reason=r[2]) for r in app.db.execute('SELECT group_id,message_id,reason FROM held_events')],
                     'discovery_progress':[dict(group_id=r[0],message_id=r[1]) for r in app.db.execute('SELECT * FROM discovery_progress')],
                     'groups':[dict(group_id=r[0],cutoff=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM monitoring_groups')],
@@ -93,7 +95,8 @@ class Monitoring:
             return await self.handle({'action':'monitor_status'})
         if c['action']=='telegram_event':
             group=int(c['group_id']); message=int(c['message_id'])
-            await app._access(group)
+            if not access_checked:
+                await app._access(group)
             account=app.db.execute("SELECT value FROM settings WHERE key='monitor_account'").fetchone()
             activation=app.db.execute('SELECT cutoff,status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
             reason=None

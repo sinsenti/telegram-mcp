@@ -84,3 +84,22 @@ class CatchupTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['admitted'],1)
         self.assertEqual([r['message_id'] for r in (await self.app.handle({'action':'monitor_status'}))['requests']],[101,301])
         self.assertEqual(len(self.codex.runs),1)
+
+    async def test_listener_startup_uses_application_discovery_after_sdk_catchup(self):
+        from telegram_integration.listener import listen
+        sdk_caught_up=False
+        pages=[]
+        async def page(group,after,limit):
+            self.assertTrue(sdk_caught_up)
+            pages.append((group,after))
+            return []
+        self.telegram.history_page=page
+        class Client:
+            def add_event_handler(self,*args): pass
+            def remove_event_handler(self,*args): pass
+            async def catch_up(self):
+                nonlocal sdk_caught_up
+                sdk_caught_up=True
+            async def run_until_disconnected(self): pass
+        await listen(self.app,Client())
+        self.assertEqual(pages,[(10,100)])

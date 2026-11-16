@@ -20,6 +20,8 @@ class Catchup:
         account=app.db.execute("SELECT value FROM settings WHERE key='monitor_account'").fetchone()
         if not folder or not account:
             raise Blocked('Enable monitoring before catching up')
+        if await app.telegram.self_id()!=int(account[0]):
+            raise Blocked('Monitoring state belongs to a different Telegram account; use its original session')
         allowed=await app.telegram.allowed_groups(int(folder[0]))
         pages=[]
         for group,cutoff,status in app.db.execute('SELECT * FROM monitoring_groups ORDER BY group_id').fetchall():
@@ -47,11 +49,15 @@ class Catchup:
         outcomes=[]
         # Every admission and page cursor commits together. A crash or rejected
         # page leaves both untouched; duplicate identities also protect retries.
+        for group,_,_,_ in pages:
+            await app._access(group)
+        # No suspension during the transaction: acknowledgments cannot commit
+        # our connection halfway through a batch. All remote checks precede it.
         with app.db:
             for _,group,message,event in sorted(observed,key=lambda e:e[:3]):
                 if event.get('kind')!='history_message':
                     raise Blocked('Catch-up requires history observations, not forged new-message events')
-                outcome=await app.monitoring.handle(dict(event,action='telegram_event',account_id=int(account[0])),replay=True,commit=False)
+                outcome=await app.monitoring.handle(dict(event,action='telegram_event',account_id=int(account[0])),replay=True,commit=False,access_checked=True)
                 outcomes.append(outcome)
                 if event.get('edited') and MARKER.search(event.get('text','')):
                     app.db.execute('INSERT OR IGNORE INTO catchup_uncertainties VALUES (?,?,?)',
