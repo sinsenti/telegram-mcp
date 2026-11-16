@@ -61,6 +61,9 @@ class Outgoing:
             if (document_sha256 is not None and operation.get('sha256')!=document_sha256
                     or args[1].is_symlink() or digest(args[1])!=operation['sha256']):
                 raise Blocked('Pending Telegram upload changed; original payload is required')
+        owner=identity.split(':')
+        if len(owner)>2 and owner[0]=='request' and not app.monitoring.delivery_allowed(int(owner[1])):
+            raise Blocked('Source request is paused after folder removal')
         method=app.telegram.create_reference if kind=='reference' else getattr(app.telegram,'send_'+kind)
         send_args=list(args)
         if kind=='document':
@@ -82,6 +85,9 @@ class Outgoing:
         for identity,data in app.db.execute("SELECT outgoing_operations.id,data FROM outgoing_operations JOIN generated_sends USING(id) WHERE status!='confirmed'").fetchall():
             operation=json.loads(data)
             owner=identity.split(':')
+            if len(owner)>2 and owner[0]=='request' and not app.monitoring.delivery_allowed(int(owner[1])):
+                outcomes.append({'operation_id':identity,'status':'paused','reason':'Source request is paused after folder removal'})
+                continue
             if len(owner)>2 and owner[0]=='task':
                 try:
                     task=app._task(owner[1])

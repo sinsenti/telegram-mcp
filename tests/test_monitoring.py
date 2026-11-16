@@ -211,8 +211,7 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.codex.observe_chat=observe; self.telegram.topic_title=topic; self.telegram.rename_topic=rename
         self.telegram.create_reference=create; self.telegram.reference=reference; self.telegram.pin_reference=pin
         await self.app.handle({'action':'monitor_enable'})
-        task=await self.app.handle(dict(action='task',destination='project',group_id=10,message_id=3))
-        worker=asyncio.create_task(self.app.handle(dict(action='sync_reference',task_id=task['task_id'])))
+        worker=asyncio.create_task(self.app.handle(dict(action='task',destination='project',group_id=10,message_id=3)))
         try:
             await asyncio.wait_for(send_started.wait(),1)
             self.assertEqual((await asyncio.wait_for(self.event(102),1))['status'],'held')

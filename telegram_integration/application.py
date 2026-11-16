@@ -25,6 +25,7 @@ class Application:
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
         self.monitor_lock = asyncio.Lock()
+        self.reference_lock = asyncio.Lock()
         from .folder_access import FolderAccess
         self.folder_access = FolderAccess(self)
         if hasattr(telegram,'set_access_guard'):
@@ -43,9 +44,29 @@ class Application:
             self.db.close()
 
     def _save(self, task):
+        # Reference maintenance can run while execution owns a different snapshot.
+        row = self.db.execute("SELECT data FROM tasks WHERE id=?", (task["task_id"],)).fetchone()
+        if row and "reference_sync" in (latest := json.loads(row[0])):
+            task["reference_sync"] = latest["reference_sync"]
         self.folder_access.preserve_pause(task)
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO tasks VALUES (?, ?)', (task['task_id'], json.dumps(task)))
+
+    def _save_reference(self, task):
+        latest = self._task(task['task_id'])
+        latest['reference_sync'] = task['reference_sync']
+        self.folder_access.preserve_pause(latest)
+        with self.db:
+            self.db.execute('UPDATE tasks SET data=? WHERE id=?', (json.dumps(latest), task['task_id']))
+        task.update(latest)
+
+    async def _maintain_reference(self, task):
+        if (not task.get('project_id') or not task.get('chat_id')
+                or task.get('topic_id') is None or not hasattr(self.telegram,'create_reference')):
+            return task
+        async with self.reference_lock:
+            from .references import synchronize
+            return await synchronize(self, self._task(task['task_id']))
 
     def _task(self, task_id):
         row = self.db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
@@ -190,6 +211,9 @@ class Application:
                     return await self.monitoring.handle(command)
             if action == 'status':
                 return self._task(command['task_id'])
+            if action in ('sync_reference','sync_references'):
+                async with self.reference_lock:
+                    return await self._handle(command)
             if self.lock.locked():
                 return {'status':'busy','reason':'Another execution owns the Codex adapter'}
             # A distinct open file description per claim gives mutual exclusion
@@ -244,6 +268,7 @@ class Application:
             self._verify_report_document(task)
         task.update(status='finished',phase='complete',reason=None)
         self._save(task)
+        task.update(await self._maintain_reference(task))
         return task
 
     async def _project(self, group, choice_id=None, choice=None):
@@ -366,6 +391,7 @@ class Application:
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO topic_tasks VALUES (?,?,?)',(group,topic,task['task_id']))
             self.db.execute('DELETE FROM topic_choices WHERE group_id=? AND topic_id=?',(group,topic))
+        task = await self._maintain_reference(task)
         return dict(task,status='linked')
 
     async def _chat_command(self, c):
@@ -475,6 +501,7 @@ class Application:
             raise Blocked('Codex turn start outcome needs reconciliation before another turn can start')
         task.update(phase='executing',client_request_id=str(uuid.uuid4()))
         self._save(task)
+        await self._maintain_reference(task)
         async def accepted(turn_id):
             task['turn_id']=turn_id
             self._save(task)
@@ -720,4 +747,4 @@ class Application:
                 except Exception as report_exc:
                     task['report_blocker'] = str(report_exc)
         self._save(task)
-        return task
+        return task if task['status']=='finished' else await self._maintain_reference(task)
