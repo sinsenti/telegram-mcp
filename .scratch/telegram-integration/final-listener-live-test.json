@@ -1,0 +1,97 @@
+{
+  "started_at": "2026-11-16T15:14:00.576853+00:00",
+  "before": {
+    "requests": [
+      [
+        1,
+        -1003989567415,
+        35,
+        "finished"
+      ]
+    ],
+    "tasks": [
+      [
+        "d44c5549ea3e454f894f772b34ff2d31",
+        2,
+        "finished",
+        "01a1e45b-5ec4-73e2-b710-c30aff663055"
+      ],
+      [
+        "adf97cc4bc1043d294804cf9650af812",
+        2,
+        "finished",
+        "01a1e473-d740-7ff1-8716-63b3bf897d8d"
+      ],
+      [
+        "430aa3849f434f4b82883e865859179d",
+        2,
+        "finished",
+        "01a1e4ac-69ae-7f11-83d9-0385480e2759"
+      ]
+    ],
+    "generated_test_ids": [
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    "human35_generated": false
+  },
+  "duration_seconds": 36,
+  "bounded_shutdown": true,
+  "after": {
+    "requests": [
+      [
+        1,
+        -1003989567415,
+        35,
+        "finished"
+      ]
+    ],
+    "tasks": [
+      [
+        "d44c5549ea3e454f894f772b34ff2d31",
+        2,
+        "finished",
+        "01a1e45b-5ec4-73e2-b710-c30aff663055"
+      ],
+      [
+        "adf97cc4bc1043d294804cf9650af812",
+        2,
+        "finished",
+        "01a1e473-d740-7ff1-8716-63b3bf897d8d"
+      ],
+      [
+        "430aa3849f434f4b82883e865859179d",
+        2,
+        "finished",
+        "01a1e4ac-69ae-7f11-83d9-0385480e2759"
+      ]
+    ],
+    "generated_test_ids": [
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    "human35_generated": false
+  },
+  "status": "verified",
+  "finished_at": "2026-11-16T15:14:36.630797+00:00"
+}

@@ -37,4 +37,10 @@ The user authorized running these controlled Telegram/Codex integration tests wi
 
 ## Fog
 
-- Tickets 10–13 are now unblocked by ticket 09. Ticket 14 reporting recovery is resolved with actual adapter evidence.
+- No implementation tickets remain open. Unknown chat-creation outcomes, unavailable cross-process interruption, and the non-atomic desktop/listener start race remain explicit operational limits rather than silent retries.
+
+## Final verification
+
+- All fourteen tickets are resolved. Final integration checks passed: 173 tests using locked uv dependencies, clean diff checks, and no unresolved review findings.
+- The final 36-second real listener restart recovered history with zero new admissions or turns, preserved all completed task/run identities and the genuine human trigger, and shut down cleanly. [Evidence](./final-listener-live-test.json).
+- All temporary implementation worktrees were removed. The listener is stopped; local environment and QR-login setup edits remain preserved in the root working directory.
