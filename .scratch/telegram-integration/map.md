@@ -11,4 +11,4 @@ Implementation branch: `integration/telegram-codex`. The approved spec and numbe
 ## Fog
 
 - Ticket 01 still needs a live project-change catalog refresh check; the pending one-chat Telegram test approval did not authorize project renaming.
-- Ticket 03 is now unblocked. Complete discussion retrieval, search, and later attachment interpretation are not yet implemented.
+- [Ticket 03](./issues/03-read-complete-discussions-and-find-tasks.md#implementation-evidence) implements discussion retrieval/search and passes hermetic application/adapter checks; final raw-page live retrieval acceptance remains pending. Attachment interpretation remains ticket 04.

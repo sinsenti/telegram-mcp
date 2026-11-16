@@ -3,9 +3,13 @@ import asyncio
 import json
 
 TOOL = {'name':'telegram','description':'Manual local Telegram task commands. Task creation requires destination=test.',
-        'inputSchema':{'type':'object','properties':{'action':{'type':'string','enum':['configure','read','task','followup','status']},
+        'inputSchema':{'type':'object','properties':{'action':{'type':'string','enum':['configure','read','search','task','followup','status']},
         'folder_id':{'type':'integer'},'group_id':{'type':'integer'},'message_id':{'type':'integer'},
-        'destination':{'type':'string','enum':['test']},'task_id':{'type':'string'}},'required':['action'],'additionalProperties':False}}
+        'destination':{'type':'string','enum':['test']},'task_id':{'type':'string'},
+        'scope':{'type':'string','enum':['message','topic']},'link':{'type':'string'},'query':{'type':'string'},
+        'selection_id':{'type':'string'},'continuation':{'type':'string'},'search_id':{'type':'string'},
+        'choice':{'type':'integer','minimum':1},'page_size':{'type':'integer','minimum':1,'maximum':100}},
+        'required':['action'],'additionalProperties':False}}
 
 async def serve(application, source, sink):
     while line := await asyncio.to_thread(source.readline):

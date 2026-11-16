@@ -3,6 +3,7 @@ import asyncio
 import json
 import sqlite3
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 from .contracts import Blocked, CodexAdapter, TelegramAdapter
 
@@ -12,6 +13,7 @@ class Application:
         self.db = sqlite3.connect(database)
         self.db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
+        self.db.execute('CREATE TABLE IF NOT EXISTS selections (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
         self.workspace = workspace.resolve()
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
@@ -47,6 +49,88 @@ class Application:
         await self._access(message.group_id)
         return message
 
+    def _remember(self, value):
+        identity = uuid.uuid4().hex
+        with self.db:
+            self.db.execute('INSERT INTO selections VALUES (?, ?)', (identity,json.dumps(value)))
+        return identity
+
+    def _selection(self, identity):
+        row = self.db.execute('SELECT data FROM selections WHERE id=?', (identity,)).fetchone()
+        if row is None:
+            raise Blocked('Unknown selection or continuation')
+        return json.loads(row[0])
+
+    async def _source(self, c):
+        if 'query' in c:
+            raise Blocked('Search first, then select a numbered result before running a task')
+        if 'selection_id' in c:
+            selection = self._selection(c['selection_id'])
+            if selection['kind'] != 'context':
+                raise Blocked('A context selection is required')
+            source = selection['source']
+        elif 'search_id' in c:
+            search = self._selection(c['search_id'])
+            choice = c.get('choice')
+            if search['kind'] != 'search' or type(choice) is not int or not 1 <= choice <= len(search['messages']):
+                raise Blocked('Choose a valid numbered search result')
+            if choice not in search.get('presented',[]):
+                raise Blocked('Choose a search result from the presented pages')
+            selected = search['messages'][choice-1]
+            source = {'group_id':selected['group_id'],'message_id':selected['message_id'],'scope':c.get('scope','message')}
+        elif 'link' in c:
+            # Adapter resolves the actual peer and enforces current folder access
+            # before fetching any message content.
+            row = self.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
+            if row is None:
+                raise Blocked('Select a Telegram folder before resolving links')
+            await self.telegram.allowed_groups(int(row[0]))
+            message = await self.telegram.resolve_link(c['link'])
+            await self._access(message.group_id)
+            source = {'group_id':message.group_id,'message_id':message.message_id,
+                      'scope':c.get('scope','topic' if message.is_topic_root else 'message')}
+        else:
+            source = {'group_id':int(c['group_id']),'message_id':int(c['message_id']),'scope':c.get('scope','message')}
+        if source['scope'] not in ('message','topic'):
+            raise Blocked('Selection scope must be message or topic')
+        await self._access(source['group_id'])
+        return source
+
+    async def _context(self, source):
+        group, message = source['group_id'], source['message_id']
+        await self._access(group)
+        context = await self.telegram.context(group,message,source['scope'])
+        if not context.messages or not any(m.message_id == message for m in context.messages):
+            raise Blocked('Selected Telegram message is missing from task context')
+        if any(m.group_id != group for m in context.messages):
+            raise Blocked('Telegram resolved a different context destination')
+        if len({m.message_id for m in context.messages}) != len(context.messages):
+            raise Blocked('Telegram returned duplicate context identities')
+        await self._access(group)
+        return context
+
+    async def _page(self, identity, offset, page_size):
+        saved = self._selection(identity)
+        if type(offset) is not int or offset < 0 or type(page_size) is not int or not 1 <= page_size <= 100:
+            raise Blocked('Invalid continuation or page size (1–100)')
+        for group in {m['group_id'] for m in saved['messages']}:
+            await self._access(group)
+        messages = saved['messages'][offset:offset+page_size]
+        end = offset+len(messages)
+        continuation = None
+        if end < len(saved['messages']):
+            continuation = self._remember({'kind':'continuation','selection_id':identity,'offset':end,'page_size':page_size})
+        common = {'complete':saved['complete'],'reason':saved.get('reason'),
+                  'page_complete':continuation is None,'continuation':continuation,'total_messages':len(saved['messages'])}
+        if saved['kind'] == 'search':
+            saved['presented']=sorted(set(saved.get('presented',[])) | set(range(offset+1,end+1)))
+            with self.db:
+                self.db.execute('UPDATE selections SET data=? WHERE id=?',(json.dumps(saved),identity))
+            return dict(common,status='choices',search_id=identity,
+                        choices=[dict(m,choice=offset+i+1) for i,m in enumerate(messages)])
+        return dict(common,status='selected',selection_id=identity,scope=saved['source']['scope'],messages=messages,
+                    text='\n\n'.join(m['text'] for m in messages),has_attachment=any(m['has_attachment'] for m in messages))
+
     async def handle(self, command: dict) -> dict:
         """Manual commands today; later normalized listener commands use this seam."""
         async with self.lock:
@@ -69,32 +153,67 @@ class Application:
             return {'status':'configured', 'folder_id':folder}
         if action == 'status':
             return self._task(c['task_id'])
+        if action == 'search':
+            query=c.get('query','')
+            if not isinstance(query,str) or not query.strip():
+                raise Blocked('Search needs nonempty text')
+            row=self.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
+            if row is None:
+                raise Blocked('Select a Telegram folder before searching')
+            groups=sorted(await self.telegram.allowed_groups(int(row[0]))) if 'group_id' not in c else [int(c['group_id'])]
+            messages=[]
+            for group in groups:
+                await self._access(group)
+                found=await self.telegram.search(group,query)
+                if any(m.group_id != group for m in found):
+                    raise Blocked('Search resolved a different group')
+                await self._access(group)
+                messages.extend(asdict(m) for m in found)
+            identity=self._remember({'kind':'search','messages':messages,'complete':True})
+            return await self._page(identity,0,c.get('page_size',50))
         if action == 'read':
-            m = await self._read(int(c['group_id']), int(c['message_id']))
-            return {'status':'selected', 'text':m.text, 'has_attachment':m.has_attachment, 'complete':True}
+            if 'continuation' in c:
+                token = self._selection(c['continuation'])
+                if token['kind'] != 'continuation':
+                    raise Blocked('Invalid continuation')
+                return await self._page(token['selection_id'],token['offset'],token['page_size'])
+            source = await self._source(c)
+            context = await self._context(source)
+            identity = self._remember({'kind':'context','source':source,'messages':[asdict(m) for m in context.messages],
+                                       'complete':context.complete,'reason':context.reason})
+            return await self._page(identity,0,c.get('page_size',50))
         if action not in ('task', 'followup'):
             raise Blocked('Unsupported command')
         if action == 'task':
             if c.get('destination') != 'test':
                 raise Blocked('Explicit destination=test required; real-project routing is not configured')
+            source = await self._source(c)
             task_id = uuid.uuid4().hex
-            task = {'task_id':task_id, 'group_id':int(c['group_id']), 'message_id':int(c['message_id']),
+            task = {'task_id':task_id, **source,
                     'folder':str(self.workspace/task_id), 'chat_id':None, 'status':'pending', 'run':0}
         else:
             task = self._task(c['task_id'])
             if task['status'] != 'finished':
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
-            task['message_id'] = int(c['message_id'])
-        m = await self._read(task['group_id'], task['message_id'])
-        if m.has_attachment:
+            source = await self._source(dict(c,group_id=task['group_id']))
+            if source['group_id'] != task['group_id']:
+                raise Blocked('Follow-up source must remain in the same group')
+            task.update(source)
+        context = await self._context(task)
+        if not context.complete:
+            raise Blocked('Selected context is incomplete: '+str(context.reason or 'history unavailable'))
+        m = next(m for m in context.messages if m.message_id == task['message_id'])
+        if any(item.has_attachment for item in context.messages):
             raise Blocked('Selected message has an attachment; attachment handling is not available in this text slice')
-        if not m.text.strip():
+        text = '\n\n'.join(item.text for item in context.messages)
+        if not text.strip():
             raise Blocked('Selected message has no task text')
         folder = Path(task['folder'])
         folder.mkdir(parents=True, exist_ok=True)
         task['run'] += 1
-        (folder/f"input-{task['run']}.txt").write_text(m.text)
+        (folder/f"input-{task['run']}.txt").write_text(text)
+        (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         task.update(status='running', reason=None, topic_id=m.topic_id)
         self._save(task)
         try:
@@ -106,7 +225,7 @@ class Application:
             task['phase'] = 'executing'
             self._save(task)
             result = await self.codex.run(task['chat_id'], folder,
-                m.text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.')
+                text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.')
             task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
             document = folder/f"result-{task['run']}.md"
             document.write_text(result.markdown)

@@ -1,0 +1,89 @@
+{
+  "folder_id": 8,
+  "group_id": -1003989567415,
+  "source_message_id": 3,
+  "authorized_scope": "existing selected message3, its replies, and topic2; read-only",
+  "message": {
+    "messages": [
+      {
+        "group_id": -1003989567415,
+        "message_id": 3,
+        "text": "Write a short Markdown checklist(just for test)",
+        "has_attachment": false,
+        "topic_id": 2,
+        "reply_to_id": 2,
+        "is_topic_root": false
+      },
+      {
+        "group_id": -1003989567415,
+        "message_id": 4,
+        "text": "Created a short test checklist. No blockers.",
+        "has_attachment": false,
+        "topic_id": 2,
+        "reply_to_id": 3,
+        "is_topic_root": false
+      },
+      {
+        "group_id": -1003989567415,
+        "message_id": 5,
+        "text": "",
+        "has_attachment": true,
+        "topic_id": 2,
+        "reply_to_id": 3,
+        "is_topic_root": false
+      }
+    ],
+    "complete": true,
+    "reason": null
+  },
+  "topic": {
+    "messages": [
+      {
+        "group_id": -1003989567415,
+        "message_id": 2,
+        "text": "",
+        "has_attachment": false,
+        "topic_id": 2,
+        "reply_to_id": null,
+        "is_topic_root": true
+      },
+      {
+        "group_id": -1003989567415,
+        "message_id": 3,
+        "text": "Write a short Markdown checklist(just for test)",
+        "has_attachment": false,
+        "topic_id": 2,
+        "reply_to_id": 2,
+        "is_topic_root": false
+      },
+      {
+        "group_id": -1003989567415,
+        "message_id": 4,
+        "text": "Created a short test checklist. No blockers.",
+        "has_attachment": false,
+        "topic_id": 2,
+        "reply_to_id": 3,
+        "is_topic_root": false
+      },
+      {
+        "group_id": -1003989567415,
+        "message_id": 5,
+        "text": "",
+        "has_attachment": true,
+        "topic_id": 2,
+        "reply_to_id": 3,
+        "is_topic_root": false
+      }
+    ],
+    "complete": true,
+    "reason": null
+  },
+  "private_link": {
+    "group_id": -1003989567415,
+    "message_id": 3,
+    "topic_id": 2,
+    "is_topic_root": false
+  },
+  "adapter": "pre-raw-pagination: Telethon iter_messages(limit=None)",
+  "verification_limit": "Final raw-page adapter read attempt failed during allowed_groups iter_dialogs membership revalidation: ValueError Request was unsuccessful 1 time(s), retries=0. No final raw-page acceptance claimed."
+}
