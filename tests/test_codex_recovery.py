@@ -11,9 +11,10 @@ from telegram_integration.contracts import Blocked
 
 
 SERVER = r'''
-import json, sys, time
+import json, sys, time, threading
 from pathlib import Path
 mode=sys.argv[-1]
+ready=threading.Event()
 output=json.dumps({'status':'completed','explanation':'Recovered original result.','markdown':'# Original result'})
 def emit(value): print(json.dumps(value),flush=True)
 def entry(identity,kind='agentMessage',**fields):
@@ -28,7 +29,7 @@ for line in sys.stdin:
         result={'thread':{'id':'known-chat','cwd':str(Path.cwd()),'projectId':None,'name':'Known','status':{'type':'active','activeFlags':[]} if mode=='metadata-active' else {'type':'idle'},'canAcceptDirectInput':True}}
     elif method=='thread/turns/list':
         assert p['threadId']=='known-chat'
-        if mode in ('accepted','interrupt','metadata-active','direct-completed','direct-malformed'): data=[]; cursor=None
+        if mode in ('accepted','interrupt','metadata-active','direct-completed','direct-malformed','delayed-start','missing-start','terminal-before-start'): data=[]; cursor=None
         elif mode=='turn-active':
             data=[{'id':'desktop-owned-turn','status':'inProgress','items':[],'itemsView':'full'}]; cursor=None
         elif mode=='repeated-cursor': data=[]; cursor='never-advances'
@@ -65,6 +66,17 @@ for line in sys.stdin:
             emit({'id':m['id'],'result':{'turn':{'id':'wanted-turn','status':'completed','itemsView':'full','items':[{'id':'final','type':'agentMessage','phase':'final_answer','text':text}]}}})
             continue
         emit({'id':m['id'],'result':{'turn':{'id':'wanted-turn','status':'inProgress'}}})
+        if mode=='missing-start': continue
+        if mode=='terminal-before-start':
+            emit({'method':'turn/completed','params':{'threadId':'known-chat','turn':{'id':'wanted-turn','status':'completed'}}})
+            continue
+        if mode=='delayed-start':
+            def started():
+                ready.set()
+                emit({'method':'turn/started','params':{'threadId':'known-chat','turn':{'id':'wanted-turn','status':'inProgress'}}})
+            threading.Timer(.1,started).start()
+            continue
+        emit({'method':'turn/started','params':{'threadId':'known-chat','turn':{'id':'wanted-turn','status':'inProgress'}}})
         if mode=='interrupt': continue
         deadline=time.monotonic()+3
         while not Path('accepted.txt').exists() and time.monotonic()<deadline: time.sleep(.01)
@@ -73,6 +85,9 @@ for line in sys.stdin:
         emit({'method':'turn/completed','params':{'threadId':'known-chat','turn':{'id':'wanted-turn','status':'completed'}}})
         continue
     elif method=='turn/interrupt':
+        if mode=='delayed-start' and not ready.is_set():
+            emit({'id':m['id'],'error':{'message':'no active turn to interrupt'}})
+            continue
         assert p=={'threadId':'known-chat','turnId':'wanted-turn'}
         emit({'id':m['id'],'result':{}})
         emit({'method':'turn/completed','params':{'threadId':'known-chat','turn':{'id':'wanted-turn','status':'interrupted'}}})
@@ -106,6 +121,40 @@ class RecoveryWireTests(unittest.IsolatedAsyncioTestCase):
                 # The exception applies only to the retained creation owner.
                 with self.assertRaisesRegex(Blocked,'not materialized'):
                     await adapter.run(chat,root,'Next request',client_request_id='request-uuid')
+            finally: await adapter.aclose()
+
+    async def test_interrupt_waits_for_started_event_after_accepted_response(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); adapter=self.adapter(root,'delayed-start')
+            async def accepted(turn_id):
+                await adapter.interrupt_turn('known-chat',root,turn_id)
+            try:
+                with self.assertRaisesRegex(Blocked,'wanted-turn interrupted'):
+                    await adapter.run('known-chat',root,'Stop this run',client_request_id='request-uuid',on_turn_accepted=accepted)
+                requests=[json.loads(line)['method'] for line in (root/'requests.jsonl').read_text().splitlines()]
+                self.assertEqual(requests.count('turn/interrupt'),1)
+            finally: await adapter.aclose()
+
+    async def test_interrupt_without_started_event_is_bounded_and_sends_no_rpc(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); adapter=self.adapter(root,'missing-start');adapter.timeout=.1
+            async def accepted(turn_id): await adapter.interrupt_turn('known-chat',root,turn_id)
+            try:
+                with self.assertRaisesRegex(Blocked,'readiness was not observed'):
+                    await adapter.run('known-chat',root,'Stop',client_request_id='request-uuid',on_turn_accepted=accepted)
+                methods=[json.loads(line)['method'] for line in (root/'requests.jsonl').read_text().splitlines()]
+                self.assertNotIn('turn/interrupt',methods)
+            finally: await adapter.aclose()
+
+    async def test_terminal_event_before_started_is_preserved_without_interrupt_rpc(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); adapter=self.adapter(root,'terminal-before-start')
+            async def accepted(turn_id): await adapter.interrupt_turn('known-chat',root,turn_id)
+            try:
+                with self.assertRaisesRegex(Blocked,'already completed'):
+                    await adapter.run('known-chat',root,'Stop',client_request_id='request-uuid',on_turn_accepted=accepted)
+                methods=[json.loads(line)['method'] for line in (root/'requests.jsonl').read_text().splitlines()]
+                self.assertNotIn('turn/interrupt',methods)
             finally: await adapter.aclose()
 
     async def test_acceptance_is_durable_before_waiting_for_completion(self):

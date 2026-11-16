@@ -28,6 +28,8 @@ class _Connection:
         self.counter = 0
         self.events = asyncio.Queue()
         self.pending = {}
+        self.turn_lifecycle = {}
+        self.turn_waiters = {}
         self.reader = asyncio.create_task(self._read())
         self.failure = None
 
@@ -49,6 +51,12 @@ class _Connection:
                         await self.send({'id':message['id'],'error':{'code':-32601,'message':'Interactive request requires human attention'}})
                     reason = message.get('params',{}).get('reason') or message['method']
                     raise Blocked(f'Codex requires human attention: {reason}. Inspect this chat before continuing.')
+                if message.get('method') in ('turn/started','turn/completed'):
+                    params=message.get('params',{})
+                    turn=params.get('turn',{})
+                    key=(params.get('threadId'),turn.get('id'))
+                    self.turn_lifecycle[key]=turn.get('status') or ('inProgress' if message['method']=='turn/started' else 'unknown')
+                    self.turn_waiters.setdefault(key,asyncio.Event()).set()
                 if 'id' in message and message['id'] in self.pending:
                     future = self.pending[message['id']]
                     if not future.done(): future.set_result(message)
@@ -60,12 +68,14 @@ class _Connection:
             self.failure = exc if isinstance(exc,Blocked) else Blocked('Codex returned an invalid protocol response.')
             for future in self.pending.values():
                 if not future.done(): future.set_exception(self.failure)
+            for waiter in self.turn_waiters.values(): waiter.set()
             await self.events.put(self.failure)
 
     async def close(self):
         self.failure = self.failure or Blocked('Codex connection closed; inspect external outcome before retry.')
         for future in self.pending.values():
             if not future.done(): future.set_exception(self.failure)
+        for waiter in self.turn_waiters.values(): waiter.set()
         self.reader.cancel()
         await asyncio.gather(self.reader,return_exceptions=True)
 
@@ -85,6 +95,19 @@ class _Connection:
             raise Blocked('Codex timed out; its external outcome needs inspection before retry.') from exc
         finally:
             self.pending.pop(request_id,None)
+
+    async def wait_turn_ready(self, chat_id, turn_id):
+        key=(chat_id,turn_id)
+        waiter=self.turn_waiters.setdefault(key,asyncio.Event())
+        if key not in self.turn_lifecycle and not self.failure:
+            try:
+                await asyncio.wait_for(waiter.wait(),min(self.timeout,10))
+            except TimeoutError as exc:
+                raise Blocked('Codex turn start readiness was not observed; interruption outcome is unresolved') from exc
+        if self.failure: raise self.failure
+        status=self.turn_lifecycle.get(key)
+        if status!='inProgress':
+            raise Blocked(f'Codex turn {turn_id} already {status or "unknown"}; interruption was not sent')
 
     async def next_event(self):
         try:
@@ -389,4 +412,5 @@ Mention preserved excluded inputs in the explanation and Markdown result.
         active=self._active.get(chat_id)
         if active is None or active[0]!=turn_id:
             raise Blocked('No live owned Codex connection for this exact turn; cross-process interruption is unverified')
+        await active[1].wait_turn_ready(chat_id,turn_id)
         await active[1].request('turn/interrupt',{'threadId':chat_id,'turnId':turn_id})
