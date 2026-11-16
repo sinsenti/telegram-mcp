@@ -12,6 +12,10 @@ class TelethonAdapter:
     def __init__(self, client):
         self.client = client
         self.folder_id = None
+        self.access_guard = lambda group: None
+
+    def set_access_guard(self, guard):
+        self.access_guard = guard
 
     async def self_id(self):
         return (await self.client.get_me()).id
@@ -24,6 +28,32 @@ class TelethonAdapter:
             if getattr(message,'chat_id',None) != group_id:
                 raise Blocked('Activation history resolved a different group')
         return max((message.id for message in result.messages),default=0)
+
+    async def history_page(self, group_id, after, limit):
+        """Oldest available messages after a durable application cursor.
+
+        Mirror Telethon's reverse history offsets in one explicit page RPC so
+        current folder access is checked before every network page.
+        """
+        if type(after) is not int or after<0 or type(limit) is not int or not 1<=limit<=100:
+            raise Blocked('Invalid catch-up history boundary or page size')
+        peer=await self._peer(group_id)
+        result=await self.client(functions.messages.GetHistoryRequest(peer=peer,
+            offset_id=after+1,offset_date=None,add_offset=-limit,limit=limit,
+            max_id=0,min_id=0,hash=0))
+        if not hasattr(result,'messages'):
+            raise Blocked('Telegram catch-up history response has no page')
+        found={}
+        for raw in result.messages:
+            if getattr(raw,'chat_id',None)!=group_id:
+                raise Blocked('Catch-up history resolved a missing or different group message')
+            if raw.id<=after:
+                continue
+            found[raw.id]=dict(kind='history_message',group_id=group_id,message_id=raw.id,
+                sender_id=raw.sender_id,text=raw.raw_text or '',
+                created_at=raw.date.isoformat(),edited=bool(getattr(raw,'edit_date',None)),
+                forwarded=bool(getattr(raw,'fwd_from',None)))
+        return [found[key] for key in sorted(found)]
 
     async def folders(self):
         result = await self.client(functions.messages.GetDialogFiltersRequest())
@@ -83,11 +113,14 @@ class TelethonAdapter:
         return allowed
 
     async def _peer(self, group_id):
+        self.access_guard(group_id)
         if self.folder_id is None or group_id not in await self.allowed_groups(self.folder_id):
             raise Blocked('Group is outside the selected Telegram folder')
+        self.access_guard(group_id)
         peer=await self.client.get_input_entity(group_id)
         if utils.get_peer_id(peer)!=group_id:
             raise Blocked('Resolved Telegram peer differs from the allowed group')
+        self.access_guard(group_id)
         return peer
 
     async def group_metadata(self, group_id):

@@ -125,12 +125,19 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             first=await app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
             telegram.allowed.clear()
             result=await app.handle({'action':'reconcile_reports','task_id':first['task_id']})
-            self.assertEqual(result['status'],'blocked')
+            self.assertEqual(result['status'],'paused')
             self.assertEqual(len(telegram.remote),1)
             self.assertTrue(Path(first['document']).exists())
             telegram.allowed.add(10)
-            self.assertEqual((await app.handle({'action':'reconcile_reports','task_id':first['task_id']}))['status'],'finished')
+            async def latest(group): return 100
+            async def account(): return 77
+            telegram.latest_message_id=latest; telegram.self_id=account
+            await app.handle({'action':'monitor_refresh'})
+            global_pass=await app.handle({'action':'reconcile_reports'})
+            self.assertEqual(global_pass['status'],'paused')
             self.assertEqual(len(telegram.remote),2)
+            self.assertEqual((await app.handle({'action':'reconcile_reports','task_id':first['task_id']}))['status'],'finished')
+            self.assertEqual(len(telegram.remote),3)
             await app.close()
 
     async def test_changed_account_never_replays_an_old_random_id(self):

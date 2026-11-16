@@ -15,7 +15,7 @@ async def synchronize(app, task):
     state = task.setdefault('reference_sync', {})
     group, topic = task['group_id'], task['topic_id']
     try:
-        await app._access(group)
+        await app._task_access(task)
         observed = await asyncio.wait_for(app.codex.observe_chat(task['chat_id'], Path(task['cwd'])), 10)
         if observed.get('chat_id') != task['chat_id']:
             raise Blocked('Codex metadata resolved a different chat')
@@ -37,14 +37,14 @@ async def synchronize(app, task):
         state['title'] = {'status':'pending','desired':desired}
         app._save(task)
         try:
-            await app._access(group)
+            await app._task_access(task)
             current = await app.telegram.topic_title(group, topic)
             if current != desired:
                 state['title']['status'] = 'uncertain'
                 app._save(task)
-                await app._access(group)
+                await app._task_access(task)
                 await app.telegram.rename_topic(group, topic, desired)
-                await app._access(group)
+                await app._task_access(task)
                 if await app.telegram.topic_title(group, topic) != desired:
                     raise Blocked('Topic rename was not confirmed')
             state['title']['status'] = 'current'
@@ -66,20 +66,20 @@ async def synchronize(app, task):
             if reference['status'] == 'uncertain' and not reference.get('operation_key'):
                 raise Blocked('Legacy reference creation outcome is uncertain; inspect Telegram before retrying')
             reference.setdefault('operation_key',f"task:{task['task_id']}:reference")
-            await app._access(group)
+            await app._task_access(task)
             reference['status'] = 'uncertain'
             app._save(task)  # Crash/lost acknowledgment cannot blindly duplicate a reference.
             identity = await app._send_generated('reference',group,topic,text,operation_key=reference['operation_key'])
             reference['message_id'] = str(identity)
             app._save(task)
-        await app._access(group)
+        await app._task_access(task)
         current = await app.telegram.reference(group, topic, identity)
         if current['text'] != text:
             reference['status'] = 'uncertain'
             app._save(task)
-            await app._access(group)
+            await app._task_access(task)
             await app.telegram.edit_reference(group, topic, identity, text)
-            await app._access(group)
+            await app._task_access(task)
             current = await app.telegram.reference(group, topic, identity)
             if current['text'] != text:
                 raise Blocked('Reference edit was not confirmed')
@@ -98,9 +98,9 @@ async def synchronize(app, task):
     app._save(task)
     try:
         if not current.get('pinned'):
-            await app._access(group)
+            await app._task_access(task)
             await app.telegram.pin_reference(group, topic, identity)
-            await app._access(group)
+            await app._task_access(task)
             current = await app.telegram.reference(group, topic, identity)
             if not current.get('pinned'):
                 raise Blocked('Reference pin was not confirmed')

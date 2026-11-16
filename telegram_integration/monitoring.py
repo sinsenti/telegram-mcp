@@ -1,4 +1,5 @@
 """Durable monitoring policy, called only through Application.handle."""
+from contextlib import nullcontext
 import json
 import re
 from .contracts import Blocked, MissingMessage
@@ -19,7 +20,10 @@ class Monitoring:
 
     def requires_recovery(self):
         """Unfinished external Codex work blocks every new execution owner."""
-        return self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone() is not None
+        if self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
+            return True
+        return any(task.get('phase') in ('creating_chat','executing')
+                   for (data,) in self.app.db.execute('SELECT data FROM tasks') for task in [json.loads(data)])
 
     def bind_task(self, sequence, task):
         """Persist the claimed request's task before any external task effect."""
@@ -49,15 +53,17 @@ class Monitoring:
                     request['outcome']=task
                     app.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(request),sequence))
 
-    async def handle(self, c, *, replay=False):
+    async def handle(self, c, *, replay=False, commit=True, access_checked=False):
         app=self.app
         if c['action']=='monitor_status':
-            return {'status':'monitoring','generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
+            return {'status':'monitoring','catchup_uncertainties':[dict(group_id=g,message_id=m,reason=r) for g,m,r in app.db.execute('SELECT * FROM catchup_uncertainties ORDER BY group_id,message_id')],
+                    'catchup_progress':[dict(group_id=g,cutoff=c,message_id=m) for g,c,m in app.db.execute('SELECT * FROM catchup_progress ORDER BY group_id')],
+                    'generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
                     'held_events':[dict(group_id=r[0],message_id=r[1],reason=r[2]) for r in app.db.execute('SELECT group_id,message_id,reason FROM held_events')],
                     'discovery_progress':[dict(group_id=r[0],message_id=r[1]) for r in app.db.execute('SELECT * FROM discovery_progress')],
                     'groups':[dict(group_id=r[0],cutoff=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM monitoring_groups')],
                     'requests':[dict(sequence=r[0],group_id=r[1],message_id=r[2],status=r[3],task_id=json.loads(r[4]).get('task_id'),outcome=json.loads(r[4]).get('outcome')) for r in app.db.execute('SELECT sequence,group_id,message_id,status,data FROM trigger_requests ORDER BY sequence')]}
-        if c['action'] in ('monitor_enable','monitor_refresh'):
+        if c['action'] in ('monitor_enable','monitor_refresh','folder_changed'):
             folder=app.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
             if not folder: raise Blocked('Select a folder before enabling monitoring')
             account=await app.telegram.self_id()
@@ -67,7 +73,15 @@ class Monitoring:
             with app.db:
                 app.db.execute("INSERT OR REPLACE INTO settings VALUES ('monitor_account',?)",(str(account),))
             groups=await app.telegram.allowed_groups(int(folder[0]))
+            known={row[0] for row in app.db.execute('SELECT group_id FROM monitoring_groups')}
+            known.update(json.loads(row[0])['group_id'] for row in app.db.execute('SELECT data FROM tasks'))
+            for group in known-groups:
+                await app.folder_access.revoke(group,interrupt=False)
+            # Gate every removed group before awaiting any remote interruption.
+            for group in known-groups:
+                await app.folder_access.interrupt_group(group)
             for group in groups:
+                app.folder_access.enable(group)
                 row=app.db.execute('SELECT status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
                 if row and row[0] not in ('disabled','readiness_pending','readiness_uncertain'): continue
                 if row and row[0] in ('readiness_pending','readiness_uncertain'):
@@ -80,10 +94,10 @@ class Monitoring:
                     ready_id=await app._send_generated('text',group,None,'Codex monitoring is ready. Post a fresh #codex request in a topic to start work.',None,operation_key=f'readiness:{group}:{cutoff}')
                 except Exception:
                     with app.db:
-                        app.db.execute("UPDATE monitoring_groups SET status='readiness_uncertain' WHERE group_id=?",(group,))
+                        app.db.execute("UPDATE monitoring_groups SET status='readiness_uncertain' WHERE group_id=? AND status!='disabled'",(group,))
                     raise
                 with app.db:
-                    app.db.execute("UPDATE monitoring_groups SET status='ready', cutoff=MAX(cutoff,?) WHERE group_id=?",(int(ready_id),group))
+                    app.db.execute("UPDATE monitoring_groups SET status='ready', cutoff=MAX(cutoff,?) WHERE group_id=? AND status!='disabled'",(int(ready_id),group))
             with app.db:
                 for (group,) in app.db.execute('SELECT group_id FROM monitoring_groups').fetchall():
                     if group not in groups:
@@ -92,14 +106,15 @@ class Monitoring:
             return await self.handle({'action':'monitor_status'})
         if c['action']=='telegram_event':
             group=int(c['group_id']); message=int(c['message_id'])
-            await app._access(group)
+            if not access_checked:
+                await app._access(group)
             account=app.db.execute("SELECT value FROM settings WHERE key='monitor_account'").fetchone()
             activation=app.db.execute('SELECT cutoff,status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
             reason=None
             if account and activation and activation[1] in ('readiness_pending','readiness_uncertain'):
                 reason='Readiness outcome is unresolved; candidate held for reconciliation'
             elif not account or not activation or activation[1]!='ready': reason='Monitoring is not ready for this group'
-            elif c.get('kind')!='new_message': reason='Edits and historical observations do not prove a fresh request'
+            elif c.get('kind') not in ('new_message','history_message'): reason='Edits and historical observations do not prove a fresh request'
             elif c.get('forwarded'): reason='Forwarded content is not a fresh user-authored request'
             elif c.get('edited'): reason='Edited history cannot prove the original request marker'
             elif c.get('sender_id')!=int(account[0]) or c.get('account_id')!=int(account[0]): reason='Request is not authored by the connected user'
@@ -109,11 +124,11 @@ class Monitoring:
             marker=bool(MARKER.search(c.get('text','')))
             if reason:
                 if 'held' in reason:
-                    with app.db:
+                    with app.db if commit else nullcontext():
                         app.db.execute('INSERT OR IGNORE INTO held_events VALUES (?,?,?,?)',(group,message,json.dumps(c),reason))
                 return {'status':'held' if 'held' in reason else 'ignored','reason':reason}
             # Discovery progress and admission are one commit, including harmless context messages.
-            with app.db:
+            with app.db if commit else nullcontext():
                 app.db.execute('INSERT INTO discovery_progress VALUES (?,?) ON CONFLICT(group_id) DO UPDATE SET message_id=MAX(message_id,excluded.message_id)',(group,message))
                 if marker:
                     cursor=app.db.execute('INSERT OR IGNORE INTO trigger_requests(account_id,group_id,message_id,data,status) VALUES (?,?,?,?,?)',(int(account[0]),group,message,json.dumps(c),'pending'))
@@ -198,5 +213,5 @@ class Monitoring:
             if task.get('status')=='blocked' and task.get('phase') in ('creating_chat','executing'):
                 status='uncertain'
         with app.db:
-            app.db.execute('UPDATE trigger_requests SET status=?,data=? WHERE sequence=?',(status,json.dumps(event),sequence))
+            app.db.execute("UPDATE trigger_requests SET status=CASE WHEN status='paused' THEN 'paused' ELSE ? END,data=? WHERE sequence=?",(status,json.dumps(event),sequence))
         return outcome
