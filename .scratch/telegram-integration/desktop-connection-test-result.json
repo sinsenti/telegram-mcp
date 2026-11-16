@@ -1,0 +1,53 @@
+{
+  "verifiedOn": "2026-11-16",
+  "cliVersion": "0.169.0",
+  "outcome": "passed_for_existing_help_project_directory",
+  "threadId": "01a1e17d-73b4-7150-a085-70d68488bc88",
+  "title": "Telegram connection test - verified",
+  "desktopProjectId": "c18094d8-b906-4609-834d-1f4a741fe843",
+  "expectedProjectId": "c18094d8-b906-4609-834d-1f4a741fe843",
+  "cwd": "/home/user/git/personal/help",
+  "desktopStatus": "notLoaded",
+  "transport": "temporary standalone app-server over stdio",
+  "execution": {
+    "model": "gpt-6.1-sol",
+    "permissions": "read-only",
+    "networkAccess": false,
+    "separateProcessesForCreateAndResume": true
+  },
+  "turns": [
+    {
+      "id": "01a1e17d-fa60-7260-ac00-1e2eda0f3a9c",
+      "status": "completed",
+      "reply": "TELEGRAM_CONNECTION_OK_2",
+      "toolItemCount": 0
+    },
+    {
+      "id": "01a1e17d-774d-7333-a3c8-dc8744f9db42",
+      "status": "completed",
+      "reply": "TELEGRAM_CONNECTION_OK_1",
+      "toolItemCount": 0
+    }
+  ],
+  "initialTitleEventSeen": true,
+  "finalTitleEventSeen": true,
+  "projectAssignment": {
+    "initialDesktopProjectId": null,
+    "finalDesktopProjectId": "c18094d8-b906-4609-834d-1f4a741fe843",
+    "manualMovePerformed": false,
+    "projectImportPerformed": false,
+    "reconciliationMechanism": "not isolated; eventual association observed"
+  },
+  "scope": {
+    "existingChatsModified": false,
+    "testChatRetained": true,
+    "telegramTested": false,
+    "projectFileToolsUsed": false,
+    "testServerProcessesStopped": true
+  },
+  "limitations": [
+    "Standalone project/read still does not recognize the desktop help project ID.",
+    "This verifies execution, persistence, desktop visibility, eventual project placement, and title readback for a known working directory; automated project discovery and Telegram integration still need implementation.",
+    "Live events from manual desktop-side renames, active-turn cancellation, and concurrent desktop/listener access were not tested."
+  ]
+}

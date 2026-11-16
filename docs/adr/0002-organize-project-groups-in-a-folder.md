@@ -1,0 +1,5 @@
+# Organize project groups inside a Telegram folder
+
+Use a selected Telegram folder, initially named `Codex`, containing one group per Codex project and one topic per Codex chat inside each group. Adding a project group to the selected folder automatically enables connector access without a separate approval step for that group; the connector enforces this rule while the underlying Telegram user session retains its normal account authority. This replaces ADR-0001's single-group layout and project-prefixed topic titles, allowing project navigation at the group level and chat-title synchronization at the topic level.
+
+Resolve a new group by exact unique Codex project name, asking the user when the match is missing or ambiguous, then remember the mapping independently of names. Removal from the folder disables further reads and replies, pauses queued tasks, and requests that running work stop while preserving its progress. Folder membership therefore controls ongoing connector access as well as initial discovery.
