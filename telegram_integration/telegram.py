@@ -6,7 +6,7 @@ from urllib.parse import urlparse, parse_qs
 from dataclasses import replace
 from telethon import utils
 from telethon.tl import functions, types
-from .contracts import Blocked, Context, Message
+from .contracts import Blocked, Context, Message, Attachment
 
 class TelethonAdapter:
     def __init__(self, client):
@@ -130,6 +130,20 @@ class TelethonAdapter:
             raise Blocked('Telegram link thread differs from the actual message topic')
         return selected
 
+    async def download(self, group_id, message_id, attachment, file):
+        peer=await self._peer(group_id)
+        raw=await self.client.get_messages(peer,ids=message_id)
+        if raw is None or raw.chat_id!=group_id or self._normalize(raw).attachment!=attachment:
+            raise Blocked('Selected attachment changed or disappeared before download')
+        await self._peer(group_id)
+        # Exact exclusively-created file handle; Telegram's untrusted filename is
+        # metadata only. No thumbnails, conversions, or downloader-chosen paths.
+        result=await self.client.download_media(raw,file=file)
+        if result is None:
+            raise Blocked('Telegram returned no original attachment')
+        if result is not file:
+            raise Blocked('Telegram returned an unexpected download destination')
+
     @staticmethod
     def _normalize(message):
         header=message.reply_to
@@ -143,8 +157,20 @@ class TelethonAdapter:
         # (including unsupported types) must still block this text-only slice.
         has_attachment = message.media is not None and not isinstance(
             message.media, (types.MessageMediaWebPage, types.MessageMediaEmpty))
+        attachment=None
+        document=getattr(message,'document',None)
+        photo=getattr(message,'photo',None)
+        if document is None and isinstance(message.media,types.MessageMediaDocument):
+            document=message.media.document
+        if photo is None and isinstance(message.media,types.MessageMediaPhoto):
+            photo=message.media.photo
+        if isinstance(document,types.Document):
+            name=next((a.file_name for a in document.attributes if isinstance(a,types.DocumentAttributeFilename)), 'unnamed.bin')
+            attachment=Attachment(f'document-{document.id}',name,document.mime_type,document.size)
+        elif isinstance(photo,types.Photo):
+            attachment=Attachment(f'photo-{photo.id}','photo.jpg','image/jpeg')
         return Message(message.chat_id,message.id,message.raw_text or '',has_attachment,topic_id,
-                       getattr(header,'reply_to_msg_id',None),isinstance(message.action,types.MessageActionTopicCreate))
+                       getattr(header,'reply_to_msg_id',None),isinstance(message.action,types.MessageActionTopicCreate),attachment)
 
     async def context(self, group_id, message_id, scope):
         if scope not in ('message','topic'):

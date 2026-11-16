@@ -1,11 +1,13 @@
 """Shared command boundary. Transports never implement task/access policy."""
 import asyncio
 import json
+import os
 import sqlite3
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from .contracts import Blocked, CodexAdapter, TelegramAdapter
+from .contracts import Blocked, CodexAdapter, TelegramAdapter, TaskInput
+from .attachments import owned_directory, family, digest, validate_evidence, FAMILIES
 
 class Application:
     def __init__(self, database: Path, workspace: Path, telegram: TelegramAdapter, codex: CodexAdapter):
@@ -14,7 +16,7 @@ class Application:
         self.db.execute('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)')
         self.db.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
         self.db.execute('CREATE TABLE IF NOT EXISTS selections (id TEXT PRIMARY KEY, data TEXT NOT NULL)')
-        self.workspace = workspace.resolve()
+        self.workspace = workspace.absolute()
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
 
@@ -206,19 +208,78 @@ class Application:
         if not context.complete:
             raise Blocked('Selected context is incomplete: '+str(context.reason or 'history unavailable'))
         m = next(m for m in context.messages if m.message_id == task['message_id'])
-        if any(item.has_attachment for item in context.messages):
-            raise Blocked('Selected message has an attachment; attachment handling is not available in this text slice')
         text = '\n\n'.join(item.text for item in context.messages)
         if not text.strip():
             raise Blocked('Selected message has no task text')
         folder = Path(task['folder'])
-        folder.mkdir(parents=True, exist_ok=True)
+        owned_directory(folder)
         task['run'] += 1
         (folder/f"input-{task['run']}.txt").write_text(text)
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         task.update(status='running', reason=None, topic_id=m.topic_id)
         self._save(task)
         try:
+            inputs=[]
+            task['inputs']=[]
+            task['phase']='capturing_inputs'
+            self._save(task)
+            exclusions=c.get('unnecessary_input_ids',[])
+            if not isinstance(exclusions,list) or any(not isinstance(value,str) for value in exclusions):
+                raise Blocked('unnecessary_input_ids must be an explicit list of input identities')
+            identities={f'{item.group_id}:{item.message_id}:{item.attachment.media_id}'
+                        for item in context.messages if item.attachment}
+            if set(exclusions)-identities:
+                raise Blocked('Explicit exclusion names an input outside the selected context')
+            blockers=[]
+            for index,item in enumerate(context.messages):
+                if not item.has_attachment:
+                    continue
+                if item.attachment is None:
+                    blockers.append(f'Message {item.message_id}: attachment metadata is unavailable')
+                    continue
+                attachment=item.attachment
+                identity=f'{item.group_id}:{item.message_id}:{attachment.media_id}'
+                kind=family(attachment.original_name,attachment.mime_type)
+                excluded=identity in exclusions
+                if excluded and kind != 'unsupported':
+                    blockers.append(f'{attachment.original_name}: only unsupported inputs may be explicitly excluded')
+                directory=owned_directory(folder/'inputs'/str(task['run'])/str(index))
+                # Source names never become paths or active instruction filenames.
+                suffix=Path(attachment.original_name).suffix.lower()
+                suffix=suffix if suffix in {extension for values in FAMILIES.values() for extension in values} else '.bin'
+                destination=directory/('original'+suffix)
+                record={'input_id':identity,'source_group_id':item.group_id,'source_message_id':item.message_id,
+                        'media_id':attachment.media_id,'original_name':attachment.original_name,'mime_type':attachment.mime_type,
+                        'path':str(destination),'family':kind,'explicitly_unnecessary':excluded}
+                try:
+                    await self._access(item.group_id)
+                    descriptor=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+                    with os.fdopen(descriptor,'wb') as stream:
+                        await self.telegram.download(item.group_id,item.message_id,attachment,stream)
+                        expected_stat=os.fstat(stream.fileno())
+                    owned_directory(directory)
+                    actual_stat=destination.stat()
+                    if (expected_stat.st_dev,expected_stat.st_ino)!=(actual_stat.st_dev,actual_stat.st_ino):
+                        raise Blocked('Downloaded original destination changed')
+                    if destination.is_symlink() or not destination.is_file():
+                        raise Blocked('Downloaded original is not a regular file')
+                    size=destination.stat().st_size
+                    if attachment.size is not None and size!=attachment.size:
+                        raise Blocked(f'Download size differs from source ({size}/{attachment.size})')
+                    record.update(sha256=digest(destination),size=size)
+                    inputs.append(TaskInput(**record))
+                    record['download_status']='preserved'
+                except Exception as exc:
+                    record.update(download_status='failed',reason=str(exc))
+                    blockers.append(f'{attachment.original_name}: {exc}')
+                task['inputs'].append(record)
+                self._save(task)
+                if kind=='unsupported' and not excluded:
+                    blockers.append(f'{attachment.original_name}: unsupported input is needed or its necessity is unknown; supply usable input or explicit unnecessary_input_ids')
+            (folder/f"inputs-{task['run']}.json").write_text(json.dumps(task['inputs'],ensure_ascii=False))
+            if blockers:
+                raise Blocked('; '.join(blockers))
+            inputs=tuple(inputs)
             if task['chat_id'] is None:
                 task['phase'] = 'creating_chat'
                 self._save(task)
@@ -226,8 +287,18 @@ class Application:
                 self._save(task)
             task['phase'] = 'executing'
             self._save(task)
-            result = await self.codex.run(task['chat_id'], folder,
-                text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.')
+            prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'
+            result = await self.codex.run(task['chat_id'], folder, prompt, inputs=inputs) if inputs else await self.codex.run(task['chat_id'], folder, prompt)
+            task.update(turn_id=result.turn_id, input_evidence=[asdict(item) for item in result.input_evidence])
+            self._save(task)
+            (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
+            validate_evidence(inputs,result.input_evidence)
+            if result.status != 'completed':
+                raise Blocked(result.explanation)
+            for item in inputs:
+                owned_directory(Path(item.path).parent)
+                if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
+                    raise Blocked(f'{item.original_name}: preserved original changed during execution')
             task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
             document = folder/f"result-{task['run']}.md"
             document.write_text(result.markdown)

@@ -204,3 +204,30 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
                 client.media=media
                 selected=await adapter.message(-1000000000010,42)
                 self.assertEqual(selected.has_attachment,expected)
+
+    async def test_download_preserves_bytes_and_checks_source_media_identity(self):
+        class DownloadClient(Client):
+            async def get_messages(self,peer,ids):
+                message=await super().get_messages(peer,ids)
+                message.document=types.Document(id=777,access_hash=0,file_reference=b'',date=None,
+                    mime_type='text/plain',size=9,dc_id=1,attributes=[types.DocumentAttributeFilename('../same.txt')])
+                message.media=types.MessageMediaDocument(document=message.document)
+                message.photo=None
+                return message
+            async def download_media(self,message,file):
+                file.write(b'blue 731\n')
+                return file
+        client=DownloadClient()
+        adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        selected=await adapter.message(-1000000000010,42)
+        self.assertEqual(selected.attachment.original_name,'../same.txt')
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'original.txt'
+            with path.open('xb') as stream:
+                await adapter.download(selected.group_id,42,selected.attachment,stream)
+            self.assertEqual(path.read_bytes(),b'blue 731\n')
+            from dataclasses import replace
+            with path.open('ab') as stream,self.assertRaisesRegex(Blocked,'changed'):
+                await adapter.download(selected.group_id,42,replace(selected.attachment,media_id='other'),stream)
+            self.assertEqual(path.read_bytes(),b'blue 731\n')
