@@ -63,6 +63,9 @@ class _Connection:
             await self.events.put(self.failure)
 
     async def close(self):
+        self.failure = self.failure or Blocked('Codex connection closed; inspect external outcome before retry.')
+        for future in self.pending.values():
+            if not future.done(): future.set_exception(self.failure)
         self.reader.cancel()
         await asyncio.gather(self.reader,return_exceptions=True)
 
@@ -267,6 +270,16 @@ Mention preserved excluded inputs in the explanation and Markdown result.
             try:
                 if on_turn_accepted is not None:
                     await on_turn_accepted(turn_id)
+                turn = result['turn']
+                if turn.get('status') == 'completed':
+                    if turn.get('itemsView') == 'full':
+                        texts=[item.get('text') for item in turn.get('items',[]) if item.get('type')=='agentMessage' and item.get('phase')!='commentary']
+                        return self._parse_result(texts[-1] if texts else None,turn_id)
+                    observed=await self._observe_on(connection,chat_id,turn_id)
+                    if observed.result is not None: return observed.result
+                    raise Blocked(observed.reason or 'Completed Codex output is unavailable; inspect the chat.')
+                if turn.get('status') in ('interrupted','failed'):
+                    raise Blocked(f'Codex turn {turn_id} {turn["status"]}: {turn.get("error")}')
                 return await self._wait_result(connection,chat_id,turn_id)
             finally:
                 self._active.pop(chat_id,None)

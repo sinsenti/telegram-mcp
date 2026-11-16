@@ -28,7 +28,7 @@ for line in sys.stdin:
         result={'thread':{'id':'known-chat','cwd':str(Path.cwd()),'projectId':None,'name':'Known','status':{'type':'active','activeFlags':[]} if mode=='metadata-active' else {'type':'idle'},'canAcceptDirectInput':True}}
     elif method=='thread/turns/list':
         assert p['threadId']=='known-chat'
-        if mode in ('accepted','interrupt','metadata-active'): data=[]; cursor=None
+        if mode in ('accepted','interrupt','metadata-active','direct-completed','direct-malformed'): data=[]; cursor=None
         elif mode=='turn-active':
             data=[{'id':'desktop-owned-turn','status':'inProgress','items':[],'itemsView':'full'}]; cursor=None
         elif mode=='repeated-cursor': data=[]; cursor='never-advances'
@@ -60,6 +60,10 @@ for line in sys.stdin:
     elif method=='turn/start':
         assert p['threadId']=='known-chat'
         assert p['clientUserMessageId']=='request-uuid'
+        if mode in ('direct-completed','direct-malformed'):
+            text=output if mode=='direct-completed' else 'unusable output'
+            emit({'id':m['id'],'result':{'turn':{'id':'wanted-turn','status':'completed','itemsView':'full','items':[{'id':'final','type':'agentMessage','phase':'final_answer','text':text}]}}})
+            continue
         emit({'id':m['id'],'result':{'turn':{'id':'wanted-turn','status':'inProgress'}}})
         if mode=='interrupt': continue
         deadline=time.monotonic()+3
@@ -188,4 +192,28 @@ class RecoveryWireTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(Blocked):
                     await adapter.interrupt_turn('known-chat',root,'wanted-turn')
                 self.assertFalse((root/'requests.jsonl').exists())
+            finally: await adapter.aclose()
+
+    async def test_direct_completed_start_response_returns_without_waiting_for_events(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); adapter=self.adapter(root,'direct-completed')
+            adapter.timeout=.1
+            accepted_ids=[]
+            async def accepted(turn_id): accepted_ids.append(turn_id)
+            try:
+                result=await adapter.run('known-chat',root,'Original request',client_request_id='request-uuid',on_turn_accepted=accepted)
+                self.assertEqual(accepted_ids,['wanted-turn'])
+                self.assertEqual(result.markdown,'# Original result')
+            finally: await adapter.aclose()
+
+    async def test_direct_malformed_completion_keeps_accepted_identity(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder); adapter=self.adapter(root,'direct-malformed')
+            adapter.timeout=.1
+            accepted_ids=[]
+            async def accepted(turn_id): accepted_ids.append(turn_id)
+            try:
+                with self.assertRaisesRegex(Blocked,'finished without a usable structured result'):
+                    await adapter.run('known-chat',root,'Original request',client_request_id='request-uuid',on_turn_accepted=accepted)
+                self.assertEqual(accepted_ids,['wanted-turn'])
             finally: await adapter.aclose()
