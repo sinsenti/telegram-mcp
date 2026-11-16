@@ -23,9 +23,10 @@ checks cover remote-success/lost-create-ack and accepted-turn/lost-completion-ac
 Recovery entrypoint and missing-acceptance correlation scenarios are shared with
 ticket 11. See `docs/codex-recovery.md`.
 
-Live supplied-client-ID persistence and same-owner interruption/terminal readback
-are pending a coordinated parent-run probe; no live clients were started by this
-implementation. Schema availability and fake contracts are not live evidence.
+Initial checkpoint before the coordinated probes: supplied-client-ID persistence
+and same-owner interruption/terminal readback were pending. The later live
+evidence and final outcome are recorded under Answer below. Schema availability
+and fake contracts alone are not live evidence.
 Unknown create, absent/ambiguous correlation, and unavailable cross-process control
 remain visible blockers. The pre-start active-work check is not atomic against a
 concurrent desktop start.
@@ -48,6 +49,14 @@ and completed output without a usable result remain blockers, never blind retrie
 [Actual adapter evidence](../codex-recovery-live-test.json) verifies supplied UUID
 persistence and recovery of the same accepted turn/result. It also separates
 acknowledged terminal interruption on a resumed owner from rejected fresh-owner
-control and owner-shutdown artifacts. Fresh-owner interruption is a ticket-12
-control acceptance gap; no exactly-once or atomic concurrent-start guarantee is
-claimed. See [recovery behavior](../../../docs/codex-recovery.md).
+control and owner-shutdown artifacts. A later wire probe verified fresh-owner
+interruption after the exact turn/started event; the adapter now gates control
+on that event. No exactly-once or atomic concurrent-start guarantee is claimed. See [recovery behavior](../../../docs/codex-recovery.md).
+
+
+Final control diagnosis: accepted turn/start response can precede actual control
+readiness. Fresh same-owner interruption succeeded after turn/started, with ACK
+and interrupted terminal event before owner shutdown. A red-first public wire
+regression now covers this registration race; missing readiness and already
+terminal turns are bounded/explicit and do not send speculative control RPCs.
+Cross-process control was not attempted because the owned route succeeded.

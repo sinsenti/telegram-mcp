@@ -33,7 +33,7 @@ The user authorized running these controlled Telegram/Codex integration tests wi
 - [Ticket 11](./issues/11-recover-known-task-progress-after-restart.md#answer) is resolved: execution-owned restart reconciliation preserves snapshots, originals, queue identity/order and known completed work; uncertain/paused execution remains observable without blind starts or reports. [Recovery policy](../../docs/known-recovery.md).
 - [Ticket 14](./issues/14-reconcile-uncertain-telegram-reporting.md#answer) is resolved after real stable-ID text/upload replay and final immutable-payload lost-ACK proof. SDK upload bytes stayed original despite source-path mutation; replay preserved one remote file 40 and its downloaded hash. [Evidence](./frozen-report-delivery-live-test.json).
 
-- [Ticket 13](./issues/13-reconcile-uncertain-codex-actions-after-crashes.md#answer) is resolved: durable Codex intents and exact accepted/correlation identities reconcile known results without blind replacement chats or turns. [Live UUID/result evidence](./codex-recovery-live-test.json) also records the distinct fresh-owner control limitation.
+- [Ticket 13](./issues/13-reconcile-uncertain-codex-actions-after-crashes.md#answer) is resolved: durable Codex intents and exact accepted/correlation identities reconcile known results without blind replacement chats or turns. [Live UUID/result evidence](./codex-recovery-live-test.json) also records the resolved accepted/start readiness race and unverified cross-process control.
 
 ## Fog
 
