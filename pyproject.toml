@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "telegram-codex-integration"
+version = "0.1.0"
+description = "Local manual Telegram to Codex task integration"
+requires-python = ">=3.11"
+dependencies = ["Telethon>=1.45,<2"]
+
+[project.scripts]
+telegram-codex = "telegram_integration.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["telegram_integration*"]

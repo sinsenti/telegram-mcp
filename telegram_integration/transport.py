@@ -1,0 +1,36 @@
+"""Thin newline-delimited MCP stdio transport."""
+import asyncio
+import json
+
+TOOL = {'name':'telegram','description':'Manual local Telegram task commands. Task creation requires destination=test.',
+        'inputSchema':{'type':'object','properties':{'action':{'type':'string','enum':['configure','read','task','followup','status']},
+        'folder_id':{'type':'integer'},'group_id':{'type':'integer'},'message_id':{'type':'integer'},
+        'destination':{'type':'string','enum':['test']},'task_id':{'type':'string'}},'required':['action'],'additionalProperties':False}}
+
+async def serve(application, source, sink):
+    while line := await asyncio.to_thread(source.readline):
+        request = {}
+        try:
+            decoded = json.loads(line)
+            if not isinstance(decoded, dict):
+                raise ValueError('MCP request must be an object')
+            request = decoded
+            method=request['method']
+            if 'id' not in request:
+                continue
+            if method == 'initialize':
+                result={'protocolVersion':'2024-11-05','capabilities':{'tools':{}},'serverInfo':{'name':'telegram-codex','version':'0.1.0'}}
+            elif method == 'ping':
+                result={}
+            elif method == 'tools/list':
+                result={'tools':[TOOL]}
+            elif method == 'tools/call' and request['params']['name']=='telegram':
+                outcome=await application.handle(request['params']['arguments'])
+                result={'content':[{'type':'text','text':json.dumps(outcome)}], 'isError':outcome.get('status')=='blocked'}
+            else:
+                raise ValueError('Unknown MCP method or tool')
+            response={'jsonrpc':'2.0','id':request['id'],'result':result}
+        except (ValueError, KeyError, TypeError) as exc:
+            response={'jsonrpc':'2.0','id':request.get('id'), 'error':{'code':-32602,'message':str(exc)}}
+        sink.write(json.dumps(response)+'\n')
+        sink.flush()
