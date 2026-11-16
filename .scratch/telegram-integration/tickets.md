@@ -1,6 +1,6 @@
 # Telegram integration tickets
 
-Status: approved breakdown; tickets published as ready-for-agent.
+Status: implementation started on `integration/telegram-codex`; live acceptance pending.
 
 [Implementation spec](./spec.md)
 
@@ -34,3 +34,12 @@ These are delivery gates. Implementation may proceed on any ticket whose blocker
 ## Initial frontier
 
 Tickets 01 and 02 can start independently. Ticket 01 must establish a supported ongoing project catalog before routing can proceed; an unsupported result leaves that dependency unresolved.
+
+## Current implementation status
+
+Tickets 01 and 02 have implementations and automated checks, but remain `needs-info`:
+
+- 01: the experimental standalone catalog matches all 11 existing desktop projects by name and directory. A controlled real-project change still needs to demonstrate live refresh; see [catalog evidence](../../docs/research/project-catalog.md).
+- 02: the shared SQLite application, manual text workflow, CLI/MCP entry points, and Telegram/Codex adapters are implemented. Actual Telegram login, folder behavior, source replies, and Markdown delivery still need authorized live validation; see [setup](../../README.md).
+
+Tickets 03–14 remain unimplemented and blocked by the graph above. Hermetic checks do not close the live acceptance requirements or establish completion of a delivery stage. No new Telegram messages or Codex chats were created during implementation.
