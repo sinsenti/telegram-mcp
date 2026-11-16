@@ -1,5 +1,13 @@
 # Recovering Telegram reports
 
+Generated PDF, DOCX, spreadsheet, image and text files use the same durable delivery
+path as Markdown. New tasks store a complete ordered `result_files` manifest before
+the explanation is sent. Each additional file has its own stable operation identity;
+the task finishes only after all files are acknowledged. Original source outputs
+are frozen into run-specific delivery copies, and recovery verifies the recorded
+payloads across the whole batch before continuing. Legacy two-message Markdown
+reports retain their original operation identities. See [result files](result-files.md).
+
 Completed Codex work and Telegram delivery have separate durable progress. Query
 `status` with the task ID first. For a task in `reporting`, call the shared
 Application command `{"action":"reconcile_reports","task_id":"…"}`. This never

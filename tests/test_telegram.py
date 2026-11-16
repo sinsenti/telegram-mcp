@@ -203,6 +203,23 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(client.uploaded,b'Original completed report')
                 self.assertEqual(client.uploaded_name,'result.md')
 
+    async def test_generated_formats_use_correct_document_mime_and_original_filename(self):
+        formats={'summary.md':'text/markdown','brief.pdf':'application/pdf',
+                 'letter.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                 'budget.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                 'data.csv':'text/csv','chart.png':'image/png','photo.jpg':'image/jpeg'}
+        with tempfile.TemporaryDirectory() as tmp:
+            client=Client(); adapter=TelethonAdapter(client)
+            await adapter.allowed_groups(7)
+            for name,mime in formats.items():
+                document=Path(tmp)/name; document.write_bytes(b'Already verified original bytes')
+                await adapter.send_document(-1000000000010,42,document,5)
+                request=next(r for r in reversed(client.requests) if isinstance(r,functions.messages.SendMediaRequest))
+                self.assertEqual(request.media.mime_type,mime,name)
+                self.assertTrue(request.media.force_file,name)
+                self.assertEqual(request.media.attributes[0].file_name,name)
+                self.assertEqual((request.reply_to.reply_to_msg_id,request.reply_to.top_msg_id),(42,5))
+
     async def test_general_reports_omit_top_message_for_text_and_document(self):
         client=Client()
         adapter=TelethonAdapter(client)

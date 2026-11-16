@@ -62,6 +62,15 @@ uv run --locked --env-file .env python -m telegram_integration.listener --state-
 
 Starting it enables monitoring and sends readiness messages to newly enabled groups. Prepare context in a project topic, then post a fresh `#codex` request yourself. Historical markers, edits adding the marker, forwarded messages, other authors, and generated integration output do not start work. Requests execute one at a time in durable admission order; current context is captured only through each trigger’s message ID. Deleting a pending trigger or removing its marker cancels that request. The listener maintains topic titles and pinned references, catches up in bounded batches, and retains queue progress across restarts. See [monitoring](docs/monitoring.md), [queue behavior](docs/queue.md), and [catch-up](docs/catchup.md).
 
+## Generated result files
+
+Ask a task to return PDF, Word DOCX, Excel XLSX/CSV, or image files, and they are
+delivered alongside the normal explanation and Markdown summary in the same
+Telegram topic. Images are preserved as downloadable originals. Up to ten files
+are supported per run (50 MiB each, 100 MiB total). Partial delivery survives a
+restart without rerunning Codex or blindly repeating uploads. See
+[generated result files](docs/result-files.md) for examples and recovery details.
+
 ## MCP
 
 Configure your MCP client with executable `uv` and arguments:

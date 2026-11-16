@@ -33,7 +33,7 @@ class Codex:
     async def create_chat(self, cwd):
         self.chats.append(cwd)
         return 'chat-actual-123'
-    async def run(self, chat_id, cwd, prompt, inputs=(), *, client_request_id=None, on_turn_accepted=None):
+    async def run(self, chat_id, cwd, prompt, inputs=(), *, client_request_id=None, on_turn_accepted=None, output_directory=None):
         self.runs.append((chat_id, cwd, prompt))
         if on_turn_accepted: await on_turn_accepted('turn-1')
         return RunResult('Greeting prepared.', '# Hello\nWelcome!', 'turn-1')

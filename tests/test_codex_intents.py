@@ -37,7 +37,7 @@ class IntentTests(unittest.IsolatedAsyncioTestCase):
     async def test_start_intent_and_accepted_identity_survive_lost_completion(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); telegram=Telegram(); codex=Codex(); requests=[]
-            async def run(chat,cwd,prompt,*,inputs=(),client_request_id,on_turn_accepted):
+            async def run(chat,cwd,prompt,*,inputs=(),client_request_id,on_turn_accepted,output_directory=None):
                 observer=Application(root/'state',root/'tasks',telegram,Codex())
                 saved=await observer.handle({'action':'status','task_id':cwd.name})
                 self.assertEqual(saved['client_request_id'],client_request_id)

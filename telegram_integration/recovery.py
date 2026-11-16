@@ -6,7 +6,7 @@ Only fully captured work with no external intent may enter the normal start path
 import json
 from pathlib import Path
 from .attachments import digest, owned_directory
-from .contracts import Blocked, RunResult, InputEvidence, TaskInput
+from .contracts import Blocked, RunResult, InputEvidence, TaskInput, ResultArtifact
 
 class Recovery:
     def __init__(self, app):
@@ -104,6 +104,7 @@ class Recovery:
                 if task.get('terminal_error'): raise Blocked(task['terminal_error'])
                 data=json.loads((Path(task['folder'])/f"run-result-{task['run']}.json").read_text())
                 data['input_evidence']=tuple(InputEvidence(**item) for item in data.get('input_evidence',[]))
+                data['artifacts']=tuple(ResultArtifact(**item) for item in data.get('artifacts',[]))
                 result=RunResult(**data)
                 if task.get('turn_id') and result.turn_id!=task['turn_id']:
                     raise Blocked('Saved result has a different turn identity')

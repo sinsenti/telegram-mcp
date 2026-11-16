@@ -26,6 +26,8 @@ for line in sys.stdin:
         print(json.dumps({'id':m['id'],'error':{'message':'settings overridden'}}), flush=True)
         continue
     result={}
+    if method=='skills/list':
+        result={'data':[{'cwd':str(Path.cwd()),'skills':[],'errors':[]}]}
     if method=='thread/start':
         if sys.argv[-1]=='reject':
             print(json.dumps({'id':m['id'],'error':{'message':'cannot create thread'}}), flush=True)
@@ -125,7 +127,7 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
             path=Path(folder)
             image=path/'original.png'
             image.write_bytes(b'image fixture; protocol test only')
-            server=SERVER.replace("result={}\n", "result={}\n    if method=='skills/list':\n        result={'data':[{'cwd':str(Path.cwd()),'skills':[{'name':'pdf','path':'/tools/pdf/SKILL.md','enabled':True}],'errors':[]}]}\n")
+            server=SERVER.replace("'skills':[]", "'skills':[{'name':'pdf','path':'/tools/pdf/SKILL.md','enabled':True}]")
             server=server.replace("if method=='turn/start':\n        text=", "if method=='turn/start':\n        Path('payload.json').write_text(json.dumps(p))\n        text=")
             server=server.replace("'markdown':'# Result\\n\\n42'", "'markdown':'# Result\\n\\n42','input_evidence':[{'input_id':'photo','outcome':'interpreted','evidence':'Three red squares above two blue circles'},{'input_id':'pdf','outcome':'interpreted','evidence':'Page 2: amber bridge 47'}]")
             script=path/'server.py';script.write_text(server)
@@ -140,6 +142,40 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn({'type':'skill','name':'pdf','path':'/tools/pdf/SKILL.md'},payload['input'])
             self.assertIn('checkpoint.pdf',payload['input'][0]['text'])
             self.assertIn('input_evidence',payload['outputSchema']['required'])
+
+    async def test_generated_file_manifest_and_enabled_creation_skills_round_trip(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder); outputs=path/'outputs'; outputs.mkdir()
+            skills=[{'name':name,'path':f'/tools/{name}/SKILL.md','enabled':True}
+                    for name in ('pdf','docx','xlsx','imagegen')]
+            skills.append({'name':'documents:documents','path':'/disabled/SKILL.md','enabled':False})
+            server=SERVER.replace("'skills':[]", "'skills':"+repr(skills))
+            server=server.replace("if method=='turn/start':\n        text=", "if method=='turn/start':\n        Path('payload.json').write_text(json.dumps(p))\n        text=")
+            server=server.replace("'markdown':'# Result\\n\\n42'", "'markdown':'# Result\\n\\n42','artifacts':[{'path':'brief.pdf'},{'path':'budget.xlsx'}]")
+            script=path/'server.py'; script.write_text(server)
+            codex=CodexAppServer([sys.executable,str(script),'success'])
+            chat=await codex.create_chat(path)
+            result=await codex.run(chat,path,'Create the requested documents',output_directory=outputs)
+            self.assertEqual([item.path for item in result.artifacts],['brief.pdf','budget.xlsx'])
+            payload=json.loads((path/'payload.json').read_text())
+            self.assertIn(str(outputs),payload['input'][0]['text'])
+            self.assertIn('artifacts',payload['outputSchema']['required'])
+            self.assertEqual({item['name'] for item in payload['input'] if item['type']=='skill'},
+                             {'pdf','docx','xlsx','imagegen'})
+            await codex.aclose()
+
+    async def test_malformed_file_manifest_blocks_completed_output(self):
+        for manifest in ({'path':'brief.pdf'},[{'path':42}],[{'path':'brief.pdf','extra':'ignored'}]):
+            with self.subTest(manifest=manifest), tempfile.TemporaryDirectory() as folder:
+                path=Path(folder)
+                output={'status':'completed','explanation':'Done','markdown':'Summary','artifacts':manifest}
+                server=SERVER.replace("text=json.dumps({'status':'completed','explanation':'Done.','markdown':'# Result\\n\\n42'})", 'text='+repr(json.dumps(output)))
+                script=path/'server.py'; script.write_text(server)
+                codex=CodexAppServer([sys.executable,str(script),'success'])
+                chat=await codex.create_chat(path)
+                with self.assertRaisesRegex(Blocked,'usable structured result'):
+                    await codex.run(chat,path,'Create a document')
+                await codex.aclose()
 
     async def test_application_retains_terminal_wire_result_before_evidence_policy(self):
         invalid=[[],[{'input_id':'unknown','outcome':'interpreted','evidence':'Fact'}],

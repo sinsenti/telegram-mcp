@@ -1,6 +1,7 @@
 """Telethon capabilities; every resolved peer remains inside the selected folder."""
 from datetime import datetime, timezone
 from pathlib import Path
+import mimetypes
 import secrets
 from urllib.parse import urlparse, parse_qs
 from dataclasses import replace
@@ -340,7 +341,9 @@ class TelethonAdapter:
         peer=await self._peer(group_id)  # Membership can change during upload.
         random_id=secrets.randbits(63) if random_id is None else random_id
         result=await self.client(functions.messages.SendMediaRequest(peer=peer,
-            media=types.InputMediaUploadedDocument(file=uploaded,mime_type='text/markdown',
+            media=types.InputMediaUploadedDocument(file=uploaded,
+                mime_type=mimetypes.guess_type(document.name,strict=False)[0] or 'application/octet-stream',
+                force_file=True,
                 attributes=[types.DocumentAttributeFilename(document.name)]),message='',
             random_id=random_id,reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
         return self._sent(result,random_id)

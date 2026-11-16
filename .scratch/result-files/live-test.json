@@ -1,0 +1,118 @@
+{
+  "started_at": "2026-11-16T19:04:50.110144+00:00",
+  "phase": "verified",
+  "group_id": -1003989567415,
+  "folder_id": 8,
+  "topic_id": 59,
+  "source_message_id": 60,
+  "task": {
+    "task_id": "7e587e4bb2de4c19a91c82445b17e6fb",
+    "chat_id": "01a1e5bf-768c-7162-951a-2dc0c4ad4ab9",
+    "turn_id": "01a1e5bf-7bd5-7653-aa5a-f2de7f85f31f",
+    "phase": "complete",
+    "status": "finished",
+    "folder": "/home/user/git/personal/telegram-mcp/.local/result-files-live/tasks/7e587e4bb2de4c19a91c82445b17e6fb"
+  },
+  "result": {
+    "task_id": "7e587e4bb2de4c19a91c82445b17e6fb",
+    "status": "finished",
+    "reason": null,
+    "chat_id": "01a1e5bf-768c-7162-951a-2dc0c4ad4ab9",
+    "turn_id": "01a1e5bf-7bd5-7653-aa5a-f2de7f85f31f",
+    "result_files": [
+      {
+        "path": "/home/user/git/personal/telegram-mcp/.local/result-files-live/tasks/7e587e4bb2de4c19a91c82445b17e6fb/result-1.md",
+        "name": "result-1.md",
+        "sha256": "e094307469d1207cf87ba45d346dbc0173b90d4791a45ecae2617ed4136bf767",
+        "size": 216
+      },
+      {
+        "path": "/home/user/git/personal/telegram-mcp/.local/result-files-live/tasks/7e587e4bb2de4c19a91c82445b17e6fb/deliverables/1/0/brief.pdf",
+        "name": "brief.pdf",
+        "sha256": "25b2007d5b34d81626cdb83128c60464c77165ed94758ce249139df8cc98ede4",
+        "size": 1635
+      },
+      {
+        "path": "/home/user/git/personal/telegram-mcp/.local/result-files-live/tasks/7e587e4bb2de4c19a91c82445b17e6fb/deliverables/1/1/letter.docx",
+        "name": "letter.docx",
+        "sha256": "6febf89627b599e028dc3ea4d3fcc151f68f277ef8db8beb74578c380088555f",
+        "size": 8571
+      },
+      {
+        "path": "/home/user/git/personal/telegram-mcp/.local/result-files-live/tasks/7e587e4bb2de4c19a91c82445b17e6fb/deliverables/1/2/budget.xlsx",
+        "name": "budget.xlsx",
+        "sha256": "687e2d9b266d053a2d107234cd02ae4e8b35efea5403e096311d6aa3ec6a7b0f",
+        "size": 3849
+      },
+      {
+        "path": "/home/user/git/personal/telegram-mcp/.local/result-files-live/tasks/7e587e4bb2de4c19a91c82445b17e6fb/deliverables/1/3/chart.png",
+        "name": "chart.png",
+        "sha256": "4afa7876eb58a9f6b4fd48384933b8703234d6efc080a939e591a676f93a5bbd",
+        "size": 34668
+      }
+    ],
+    "report_ids": [
+      "61",
+      "62",
+      "63",
+      "64",
+      "65",
+      "66"
+    ],
+    "output_directory": "/home/user/git/personal/telegram-mcp/.local/result-files-live/tasks/7e587e4bb2de4c19a91c82445b17e6fb/artifacts/1",
+    "artifacts": [
+      {
+        "path": "brief.pdf"
+      },
+      {
+        "path": "letter.docx"
+      },
+      {
+        "path": "budget.xlsx"
+      },
+      {
+        "path": "chart.png"
+      }
+    ]
+  },
+  "verified_files": [
+    {
+      "message_id": "62",
+      "name": "result-1.md",
+      "mime_type": "text/markdown",
+      "size": 216,
+      "sha256": "e094307469d1207cf87ba45d346dbc0173b90d4791a45ecae2617ed4136bf767"
+    },
+    {
+      "message_id": "63",
+      "name": "brief.pdf",
+      "mime_type": "application/pdf",
+      "size": 1635,
+      "sha256": "25b2007d5b34d81626cdb83128c60464c77165ed94758ce249139df8cc98ede4"
+    },
+    {
+      "message_id": "64",
+      "name": "letter.docx",
+      "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "size": 8571,
+      "sha256": "6febf89627b599e028dc3ea4d3fcc151f68f277ef8db8beb74578c380088555f"
+    },
+    {
+      "message_id": "65",
+      "name": "budget.xlsx",
+      "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "size": 3849,
+      "sha256": "687e2d9b266d053a2d107234cd02ae4e8b35efea5403e096311d6aa3ec6a7b0f"
+    },
+    {
+      "message_id": "66",
+      "name": "chart.png",
+      "mime_type": "image/png",
+      "size": 34668,
+      "sha256": "4afa7876eb58a9f6b4fd48384933b8703234d6efc080a939e591a676f93a5bbd"
+    }
+  ],
+  "reconcile_sent_nothing": true,
+  "finished_at": "2026-11-16T19:06:46.121870+00:00",
+  "clients_closed": true
+}

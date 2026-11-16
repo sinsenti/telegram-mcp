@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import sqlite3
+import stat
 import uuid
 from dataclasses import asdict
 from pathlib import Path
@@ -247,18 +248,34 @@ class Application:
     async def _send_generated(self, kind, group, *args, operation_key=None, document_sha256=None):
         return await self.outgoing.send(kind,group,args,operation_key,document_sha256=document_sha256)
 
+    def _report_files(self, task):
+        if task.get('reporting_version') == 2:
+            files=task.get('result_files')
+            if not isinstance(files,list) or not files:
+                raise Blocked('Completed report lacks its original file manifest')
+            if files[0].get('path') != task.get('document') or files[0].get('sha256') != task.get('document_sha256'):
+                raise Blocked('Completed report document differs from its original file manifest')
+            return files
+        return [{'path':task['document'],'sha256':task.get('document_sha256')}]
+
     def _verify_report_document(self, task):
-        if not task.get('document_sha256'):
-            raise Blocked('Legacy report lacks original document identity; inspect Telegram manually')
-        document=Path(task['document'])
-        if document.is_symlink() or not document.is_file() or digest(document)!=task['document_sha256']:
-            raise Blocked('Completed report document changed; original payload is required')
+        # Verify the whole frozen batch, including files whose operation has not
+        # yet been journaled. No send may establish a new payload after a restart.
+        for item in self._report_files(task):
+            if not item.get('sha256'):
+                raise Blocked('Legacy report lacks original document identity; inspect Telegram manually')
+            document=Path(item['path'])
+            owned_directory(document.parent)
+            if document.is_symlink() or not document.is_file() or digest(document)!=item['sha256']:
+                raise Blocked('Completed report document changed; original payload is required')
 
     async def _deliver_reports(self, task):
         await self._task_access(task)
-        if not task.get('reporting_version') and len(task.get('report_ids',[]))<2:
+        files=self._report_files(task)
+        expected=1+len(files)
+        if not task.get('reporting_version') and len(task.get('report_ids',[]))<expected:
             raise Blocked('Legacy task reporting lacks durable operation identity; inspect Telegram manually')
-        if len(task.get('report_ids',[]))<2:
+        if len(task.get('report_ids',[]))<expected:
             self._verify_report_document(task)
         prefix=f"task:{task['task_id']}:run:{task['run']}"
         if not task.get('report_ids'):
@@ -266,11 +283,18 @@ class Application:
             task['report_ids']=[await self._send_generated('text',task['group_id'],task['message_id'],task['explanation'],task['topic_id'],operation_key=prefix+':text')]
             self._save(task)
             self._verify_report_document(task)
-        if len(task['report_ids'])<2:
+        for index,item in enumerate(files):
+            if len(task['report_ids']) > index+1:
+                continue
             await self._task_access(task)
             self._verify_report_document(task)
-            task['report_ids'].append(await self._send_generated('document',task['group_id'],task['message_id'],Path(task['document']),task['topic_id'],operation_key=prefix+':document',document_sha256=task['document_sha256']))
+            key=prefix+(':document' if index==0 else f':artifact:{index-1}')
+            message_id=await self._send_generated('document',task['group_id'],task['message_id'],Path(item['path']),task['topic_id'],operation_key=key,document_sha256=item['sha256'])
+            task['report_ids'].append(message_id)
+            self._save(task)
             self._verify_report_document(task)
+        # A revocation during the last awaited send must retain the task pause.
+        await self._task_access(task)
         task.update(status='finished',phase='complete',reason=None)
         self._save(task)
         task.update(await self._maintain_reference(task))
@@ -460,7 +484,8 @@ class Application:
     def _store_result(self, task, result):
         folder=Path(task['folder'])
         task.update(turn_id=result.turn_id, explanation=result.explanation,
-                    result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
+                    result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence],
+                    artifacts=[asdict(item) for item in result.artifacts])
         (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
         task['phase']='terminal_result'
         self._save(task)
@@ -480,12 +505,37 @@ class Application:
             owned_directory(Path(item.path).parent)
             if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
                 raise Blocked(f'{item.original_name}: preserved original changed during execution')
-        task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
+        from .artifacts import freeze_artifacts
+        frozen=[]
+        if result.artifacts:
+            if not task.get('output_directory'):
+                raise Blocked('Generated result lacks its original run output directory')
+            frozen=freeze_artifacts(Path(task['output_directory']),result.artifacts,folder/'deliverables'/str(task['run']))
         document = folder/f"result-{task['run']}.md"
-        document.write_text(result.markdown)
+        owned_directory(folder)
+        content=result.markdown.encode('utf-8')
+        try:
+            descriptor=os.open(document,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
+        except FileExistsError:
+            # A terminal-result recovery may reuse only its exact frozen bytes.
+            # Never truncate an existing inode, including hardlinks from Codex.
+            descriptor=os.open(document,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            with os.fdopen(descriptor,'rb') as stream:
+                saved=os.fstat(stream.fileno())
+                if not stat.S_ISREG(saved.st_mode) or saved.st_nlink!=1:
+                    raise Blocked('Completed report summary must be a regular file without hardlinks')
+                if saved.st_size!=len(content) or stream.read(len(content)+1)!=content:
+                    raise Blocked('Completed report summary differs; restore the original payload before recovery')
+        else:
+            with os.fdopen(descriptor,'wb') as stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+        task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
         task['document'] = str(document)
         task['document_sha256'] = digest(document)
-        task['reporting_version'] = 1
+        task['reporting_version'] = 2
+        task['result_files'] = [dict(path=str(document),name=document.name,sha256=task['document_sha256'],size=document.stat().st_size),*frozen]
         self._save(task)
         if task.get('status') != 'paused':
             await self._deliver_reports(task)
@@ -508,6 +558,9 @@ class Application:
         # Metadata/reference work yields to folder changes. Revalidate before
         # recording the external start intent and handing work to Codex.
         await self._task_access(task)
+        output_directory=owned_directory(Path(task['folder'])/'artifacts'/str(task['run']))
+        task['output_directory']=str(output_directory)
+        self._save(task)
         task.update(phase='executing',client_request_id=str(uuid.uuid4()))
         self._save(task)
         async def accepted(turn_id):
@@ -517,7 +570,7 @@ class Application:
                 await self.folder_access.interrupt_if_revoked(task)
         prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'
         return await self.codex.run(task['chat_id'],Path(task.get('cwd',task['folder'])),prompt,
-            inputs=inputs,client_request_id=task['client_request_id'],on_turn_accepted=accepted)
+            inputs=inputs,client_request_id=task['client_request_id'],on_turn_accepted=accepted,output_directory=output_directory)
 
     async def _handle(self, c):
         action = c['action']
@@ -669,7 +722,8 @@ class Application:
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         # These fields describe only the current run. Earlier artifacts remain on disk.
         for key in ('codex_create_intent','client_request_id','turn_id','input_evidence','result_status','explanation','document',
-                    'report_ids','blocker_report_id','report_blocker','document_sha256','snapshot_sha256','terminal_error'):
+                    'report_ids','blocker_report_id','report_blocker','document_sha256','snapshot_sha256','terminal_error',
+                    'output_directory','result_files','artifacts','reporting_version'):
             task.pop(key,None)
         task.update(status='running', reason=None, topic_id=m.topic_id, phase='capturing_inputs')
         self._save(task)

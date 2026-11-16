@@ -78,12 +78,18 @@ class Context:
     reason: str | None = None
 
 @dataclass(frozen=True)
+class ResultArtifact:
+    """A generated file relative to the current run's output directory."""
+    path: str
+
+@dataclass(frozen=True)
 class RunResult:
     explanation: str
     markdown: str
     turn_id: str
     input_evidence: tuple[InputEvidence, ...] = ()
     status: str = "completed"
+    artifacts: tuple[ResultArtifact, ...] = ()
 
 @dataclass(frozen=True)
 class TurnObservation:
@@ -117,7 +123,7 @@ class CodexAdapter(Protocol):
     async def observe_chat(self, chat_id: str, cwd: Path) -> dict: ...
     async def aclose(self) -> None: ...
     async def create_chat(self, cwd: Path, project_id: str | None = None) -> str: ...
-    async def run(self, chat_id: str, cwd: Path, prompt: str, inputs: tuple[TaskInput, ...] = (), *, client_request_id: str | None = None, on_turn_accepted: Callable[[str], Awaitable[None]] | None = None) -> RunResult: ...
+    async def run(self, chat_id: str, cwd: Path, prompt: str, inputs: tuple[TaskInput, ...] = (), *, client_request_id: str | None = None, on_turn_accepted: Callable[[str], Awaitable[None]] | None = None, output_directory: Path | None = None) -> RunResult: ...
     async def observe_turn(self, chat_id: str, cwd: Path, turn_id: str) -> TurnObservation: ...
     async def find_turn(self, chat_id: str, cwd: Path, client_request_id: str) -> TurnObservation: ...
     async def interrupt_turn(self, chat_id: str, cwd: Path, turn_id: str) -> None: ...
