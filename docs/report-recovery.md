@@ -9,6 +9,8 @@ acknowledged results remain delivered. `reconcile_reports` without a task ID
 reconciles already journaled sends and exposes legacy uncertainty; use the task
 command afterwards to finish any file not yet journaled.
 
+The completed result's document digest is committed with the task as soon as the result file is written, before the explanation's first remote call. Recovery verifies those original bytes before new or replayed uploads and after awaited sends. A local edit after a lost explanation acknowledgment therefore blocks upload rather than defining a new report payload; restoring the original bytes permits recovery. Partial legacy reports missing that original document identity require manual inspection.
+
 Each new send commits its kind, group, source message/topic, payload, Telegram
 account (when supported by the adapter), random ID and document digest before
 sending. Document bytes must remain unchanged. Acknowledgment and generated
@@ -46,7 +48,7 @@ can complete its first send but cannot replay an uncertain send.
 
 Application tests use real SQLite and task files with external Telegram/Codex
 substitutes: replies and files accepted remotely before a lost response, restart,
-repeat recovery, revoked access, account changes, early echoes and held human
+repeat recovery, edited reports after lost text acknowledgments, mutations during sends, missing legacy document identity, historical queue-outcome preservation, revoked access, account changes, early echoes and held human
 requests. Reference tests cover lost creation, edit, rename and pin acknowledgments.
 Focused adapter tests verify stable IDs and matching UpdateMessageID extraction.
 Live adapter evidence is recorded separately after the controlled allowed-group

@@ -28,7 +28,7 @@ class Outgoing:
                 return True
         return False
 
-    async def send(self, kind, group, args, key=None):
+    async def send(self, kind, group, args, key=None, *, document_sha256=None):
         app=self.app
         identity=key or uuid.uuid4().hex
         row=app.db.execute('SELECT data FROM outgoing_operations WHERE id=?',(identity,)).fetchone()
@@ -46,8 +46,9 @@ class Outgoing:
             stored=list(args)
             if kind=='document':
                 stored[1]=str(Path(stored[1]).absolute())
+            original_sha256=(document_sha256 or digest(stored[1])) if kind=='document' else None
             operation=dict(kind=kind,group_id=group,args=stored,random_id=secrets.randbits(63),replayable=replayable,account_id=await app.telegram.self_id() if hasattr(app.telegram,'self_id') else None)
-            if kind=='document': operation['sha256']=digest(stored[1])
+            if kind=='document': operation['sha256']=original_sha256
             with app.db:
                 app.db.execute('INSERT INTO outgoing_operations VALUES (?,?)',(identity,json.dumps(operation)))
                 app.db.execute('INSERT INTO generated_sends VALUES (?,?,?)',(identity,group,'pending'))
@@ -57,7 +58,8 @@ class Outgoing:
             raise Blocked('Outgoing operation belongs to a different Telegram account')
         if kind=='document':
             args[1]=Path(args[1])
-            if args[1].is_symlink() or digest(args[1])!=operation['sha256']:
+            if (document_sha256 is not None and operation.get('sha256')!=document_sha256
+                    or args[1].is_symlink() or digest(args[1])!=operation['sha256']):
                 raise Blocked('Pending Telegram upload changed; original payload is required')
         method=app.telegram.create_reference if kind=='reference' else getattr(app.telegram,'send_'+kind)
         try:
@@ -67,6 +69,8 @@ class Outgoing:
                 app.db.execute("UPDATE generated_sends SET status='uncertain' WHERE id=? AND status!='confirmed'",(identity,))
             raise
         self.acknowledge(operation['random_id'],message)
+        if kind=='document' and (args[1].is_symlink() or digest(args[1])!=operation['sha256']):
+            raise Blocked('Telegram upload changed during delivery; original payload is required')
         return str(message)
 
     async def reconcile(self):

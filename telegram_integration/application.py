@@ -183,7 +183,7 @@ class Application:
                 try:
                     async with self.lock:
                         try:
-                            if action in ('task','followup','chat_command','link') and self.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
+                            if action in ('task','followup','chat_command','link') and self.monitoring.requires_recovery():
                                 return {'status':'blocked','reason':'A previous automatic request requires recovery before manual execution'}
                             if action == 'dispatch_pending':
                                 return await self.monitoring.dispatch()
@@ -195,18 +195,30 @@ class Application:
         except Exception as exc:
             return {'status':'blocked','reason':str(exc)}
 
-    async def _send_generated(self, kind, group, *args, operation_key=None):
-        return await self.outgoing.send(kind,group,args,operation_key)
+    async def _send_generated(self, kind, group, *args, operation_key=None, document_sha256=None):
+        return await self.outgoing.send(kind,group,args,operation_key,document_sha256=document_sha256)
+
+    def _verify_report_document(self, task):
+        if not task.get('document_sha256'):
+            raise Blocked('Legacy report lacks original document identity; inspect Telegram manually')
+        document=Path(task['document'])
+        if document.is_symlink() or not document.is_file() or digest(document)!=task['document_sha256']:
+            raise Blocked('Completed report document changed; original payload is required')
 
     async def _deliver_reports(self, task):
         if not task.get('reporting_version') and len(task.get('report_ids',[]))<2:
             raise Blocked('Legacy task reporting lacks durable operation identity; inspect Telegram manually')
+        if len(task.get('report_ids',[]))<2:
+            self._verify_report_document(task)
         prefix=f"task:{task['task_id']}:run:{task['run']}"
         if not task.get('report_ids'):
             task['report_ids']=[await self._send_generated('text',task['group_id'],task['message_id'],task['explanation'],task['topic_id'],operation_key=prefix+':text')]
             self._save(task)
+            self._verify_report_document(task)
         if len(task['report_ids'])<2:
-            task['report_ids'].append(await self._send_generated('document',task['group_id'],task['message_id'],Path(task['document']),task['topic_id'],operation_key=prefix+':document'))
+            self._verify_report_document(task)
+            task['report_ids'].append(await self._send_generated('document',task['group_id'],task['message_id'],Path(task['document']),task['topic_id'],operation_key=prefix+':document',document_sha256=task['document_sha256']))
+            self._verify_report_document(task)
         task.update(status='finished',phase='complete',reason=None)
         self._save(task)
         return task
@@ -378,7 +390,10 @@ class Application:
                 if observed.get('chat_id') != task['chat_id']:
                     break
                 canonical = observed.get('project_id') == task['project_id']
-                legacy = task.get('membership') == 'unique_project_cwd' and observed.get('project_id') is None
+                legacy = False
+                if task.get('membership') == 'unique_project_cwd' and observed.get('project_id') is None:
+                    projects = await asyncio.to_thread(self.catalog.refresh)
+                    legacy = sum(str(root) == task['cwd'] for project in projects for root in project.roots) == 1
                 if (canonical or legacy) and observed.get('cwd') == task['cwd']:
                     return {'status':'legacy_cwd_verified_desktop_unverified' if legacy else 'server_verified_desktop_unverified','observations':observations}
                 await asyncio.sleep(0.2)
@@ -410,14 +425,7 @@ class Application:
                 raise Blocked('Task has no completed result awaiting reporting')
             try:
                 await self._deliver_reports(task)
-                for sequence,data in self.db.execute("SELECT sequence,data FROM trigger_requests WHERE status='blocked'").fetchall():
-                    event=json.loads(data)
-                    previous=event.get('outcome',{})
-                    if (event.get('task_id',previous.get('task_id')) == task['task_id']
-                            and previous.get('run') == task['run'] and previous.get('phase') == 'reporting'):
-                        event['outcome']=task
-                        with self.db:
-                            self.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(event),sequence))
+                self.monitoring.update_matching_delivery_outcome(task)
                 return task
             except Exception as exc:
                 task.update(status='blocked',reason=str(exc))
@@ -514,6 +522,10 @@ class Application:
             chats = await self._chat_choices(project)
             if not any(chat['chat_id'] == task['chat_id'] for chat in chats):
                 raise Blocked('Linked chat no longer belongs to the assigned project')
+        if task.get('project_id') and task.get('chat_id'):
+            placement = await self._placement(task)
+            if placement['status'] == 'unresolved':
+                raise Blocked('Existing chat no longer belongs to the assigned project: '+placement['reason'])
         context = await self._context(task,c.get('context_upper_bound'))
         if c.get('context_upper_bound') is not None and any(m.message_id>c['context_upper_bound'] for m in context.messages):
             raise Blocked('Telegram returned context beyond the request boundary')
@@ -532,18 +544,12 @@ class Application:
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         # These fields describe only the current run. Earlier artifacts remain on disk.
         for key in ('turn_id','input_evidence','result_status','explanation','document',
-                    'report_ids','blocker_report_id','report_blocker'):
+                    'report_ids','blocker_report_id','report_blocker','document_sha256'):
             task.pop(key,None)
         task.update(status='running', reason=None, topic_id=m.topic_id)
         self._save(task)
         if c.get('request_sequence') is not None:
-            # Explicit worker identity binds only its own admission to this task,
-            # before downloads or any external Codex effect can start.
-            with self.db:
-                row=self.db.execute('SELECT data FROM trigger_requests WHERE sequence=?',(c['request_sequence'],)).fetchone()
-                request=json.loads(row[0])
-                request['task_id']=task['task_id']
-                self.db.execute('UPDATE trigger_requests SET data=? WHERE sequence=?',(json.dumps(request),c['request_sequence']))
+            self.monitoring.bind_task(c['request_sequence'],task)
         if task.get('project_id'):
             with self.db:
                 self.db.execute('INSERT OR REPLACE INTO topic_tasks VALUES (?,?,?)',(task['group_id'],m.topic_id,task['task_id']))
@@ -642,6 +648,7 @@ class Application:
             document = folder/f"result-{task['run']}.md"
             document.write_text(result.markdown)
             task['document'] = str(document)
+            task['document_sha256'] = digest(document)
             task['reporting_version'] = 1
             self._save(task)
             await self._deliver_reports(task)

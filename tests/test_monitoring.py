@@ -37,6 +37,32 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         followup=await self.app.handle({'action':'dispatch_pending'})
         self.assertEqual((followup['task_id'],followup['chat_id'],followup['run']),(result['task_id'],result['chat_id'],2))
         self.assertEqual(len(self.codex.created),1)
+    async def test_existing_automatic_chat_current_placement_blocks_before_another_turn(self):
+        from telegram_integration.contracts import Message
+        async def trigger(group,message): return Message(group,message,'#codex greeting',topic_id=2)
+        self.telegram.message=trigger
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101)
+        first=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual(first['status'],'finished',first)
+        self.assertNotIn('membership',first)
+        for index,changed in enumerate(({'project_id':'foreign'}, {'cwd':str(self.root)}, {'chat_id':'other'})):
+            with self.subTest(changed=changed):
+                async def observe(chat,cwd):
+                    return dict(dict(chat_id=chat,cwd=str(cwd),project_id='server-help'),**changed)
+                self.codex.observe_chat=observe
+                await self.event(102+index)
+                blocked=await self.app.handle({'action':'dispatch_pending'})
+                self.assertEqual(blocked['status'],'blocked',blocked)
+                self.assertEqual(len(self.codex.runs),1)
+                self.assertEqual(await self.app.handle({'action':'status','task_id':first['task_id']}),first)
+        async def restored(chat,cwd): return dict(chat_id=chat,cwd=str(cwd),project_id='server-help')
+        self.codex.observe_chat=restored
+        await self.event(110)
+        continued=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((continued['task_id'],continued['chat_id'],continued['run']),
+                         (first['task_id'],first['chat_id'],2))
+
     async def test_edits_other_authors_generated_echo_and_old_messages_cannot_trigger(self):
         await self.app.handle({'action':'monitor_enable'})
         for change in ({'kind':'edit'},{'sender_id':88},{'edited':True},{'message_id':1}):
@@ -239,6 +265,33 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.event(201))['status'],'ignored')
         self.assertEqual(len(remote),1)
         self.assertEqual(len(self.codex.runs),1)
+
+    async def test_report_recovery_updates_only_current_blocked_request(self):
+        from telegram_integration.contracts import Message
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        self.telegram.message=message
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101)
+        first=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual(first['status'],'finished',first)
+        historical=(await self.app.handle({'action':'monitor_status'}))['requests'][0]
+        lose=True
+        async def send(group,source,text,topic,*,random_id=None):
+            nonlocal lose
+            if lose:
+                lose=False
+                raise TimeoutError('text delivered with acknowledgment lost')
+            return '205'
+        self.telegram.send_text=send
+        await self.event(102)
+        second=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((second['status'],second['task_id'],second['run']),('blocked',first['task_id'],2))
+        recovered=await self.app.handle({'action':'reconcile_reports','task_id':second['task_id']})
+        self.assertEqual(recovered['status'],'finished',recovered)
+        requests=(await self.app.handle({'action':'monitor_status'}))['requests']
+        self.assertEqual(requests[0],historical)
+        self.assertEqual((requests[1]['status'],requests[1]['outcome']['run']),('finished',2))
+        self.assertEqual(len(self.codex.runs),2)
 
     async def test_lost_readiness_ack_preserves_cutoff_and_later_human_request(self):
         from telegram_integration.application import Application

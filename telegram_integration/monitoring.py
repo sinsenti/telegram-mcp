@@ -17,6 +17,38 @@ class Monitoring:
             CREATE TABLE IF NOT EXISTS generated_sends (id TEXT PRIMARY KEY, group_id INTEGER, status TEXT);
         ''')
 
+    def requires_recovery(self):
+        """Unfinished external Codex work blocks every new execution owner."""
+        return self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone() is not None
+
+    def bind_task(self, sequence, task):
+        """Persist the claimed request's task before any external task effect."""
+        app=self.app
+        with app.db:
+            row=app.db.execute("SELECT group_id,message_id,data FROM trigger_requests WHERE sequence=? AND status='running'",(sequence,)).fetchone()
+            if not row or (row[0],row[1]) != (task['group_id'],task['message_id']):
+                raise Blocked('Automatic request no longer owns this task source')
+            request=json.loads(row[2])
+            request['task_id']=task['task_id']
+            app.db.execute("UPDATE trigger_requests SET data=? WHERE sequence=? AND status='running'",(json.dumps(request),sequence))
+
+    def update_matching_delivery_outcome(self, task):
+        """Finish only the request blocked on delivery of this exact task run."""
+        if task.get('status') != 'finished' or task.get('phase') != 'complete':
+            return
+        app=self.app
+        with app.db:
+            for sequence,data in app.db.execute("SELECT sequence,data FROM trigger_requests WHERE status='blocked'").fetchall():
+                request=json.loads(data)
+                previous=request.get('outcome',{})
+                if (request.get('task_id',previous.get('task_id')) == task['task_id']
+                        and previous.get('task_id') == task['task_id']
+                        and previous.get('run') == task['run']
+                        and previous.get('status') == 'blocked'
+                        and previous.get('phase') == 'reporting'):
+                    request['outcome']=task
+                    app.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(request),sequence))
+
     async def handle(self, c, *, replay=False):
         app=self.app
         if c['action']=='monitor_status':
@@ -130,7 +162,7 @@ class Monitoring:
 
     async def dispatch(self):
         app=self.app
-        if app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
+        if self.requires_recovery():
             return {'status':'blocked','reason':'A previous request is still running or requires recovery before queued work can start'}
         row=app.db.execute("SELECT sequence,group_id,message_id,data FROM trigger_requests WHERE status='pending' ORDER BY sequence LIMIT 1").fetchone()
         if not row: return {'status':'idle'}
