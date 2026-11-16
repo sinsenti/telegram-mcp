@@ -4,27 +4,44 @@ Run Telegram tasks locally in Codex using your existing Telegram account and sav
 
 ## Setup
 
-From this repository, use Python 3.11 or newer:
+Use [uv](https://docs.astral.sh/uv/getting-started/installation/) to manage the project environment and dependencies. The default Python version is pinned in `.python-version`; resolved dependencies are recorded in `uv.lock`.
+
+From this repository:
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -e .
-export TELEGRAM_API_ID='your Telegram application ID'
-export TELEGRAM_API_HASH='your Telegram application hash'
-.venv/bin/telegram-codex login
-.venv/bin/telegram-codex folders
+uv sync --locked
+cp -n .env.example .env
+chmod 600 .env
 ```
 
-Get the API values from your account's [Telegram developer application](https://my.telegram.org). Login uses your existing account and prompts interactively for the phone, code, and two-factor password when required. `login` is the only interactive authentication path; MCP never asks for credentials on its protocol stream. Keep the resulting `.local/telegram.session` private: it represents account access. The `.local/` directory, session, SQLite state, and task inputs/results are ignored by Git. The directory is created with owner-only permissions.
+Fill in `.env` with your Telegram application credentials:
+
+```dotenv
+TELEGRAM_API_ID=your_application_id
+TELEGRAM_API_HASH=your_application_hash
+```
+
+The CLI and MCP load `.env` from the repository selected by `--root` (the current directory by default). Existing environment variables take precedence. `.env` is ignored by Git; `.env.example` contains only empty fields.
+
+Then log in and list your folders:
+
+```sh
+uv run --locked telegram-codex login-qr
+uv run --locked telegram-codex folders
+```
+
+Get the API values from your account's [Telegram developer application](https://my.telegram.org). For QR login, open **Telegram → Settings → Devices → Link Desktop Device** on your logged-in phone, scan the terminal QR code, and approve the login. Expired codes refresh automatically. If two-step verification is enabled, enter its password in the terminal when prompted. Press Ctrl+C to cancel. An existing authorized session is reused.
+
+The alternative `uv run --locked telegram-codex login` uses your phone number and a login code. Both methods save the same session; MCP never asks for credentials on its protocol stream. Keep the resulting `.local/telegram.session` private: it represents account access. The `.local/` directory, session, SQLite state, and task inputs/results are ignored by Git. The directory is created with owner-only permissions.
 
 Create your Telegram folder and project groups yourself, enable Topics where desired, then choose the returned stable folder ID. Renaming the folder does not select another folder. This connector restricts its operations; the account itself retains normal Telegram authority. Folder membership is evaluated before reads and each send/upload using explicit include/pin/exclude precedence and supported group filters. A filter relying on inherited mute settings is blocked when effective membership cannot be verified; use explicit included groups for that setup.
 
 ```sh
-.venv/bin/telegram-codex command '{"action":"configure","folder_id":7}'
-.venv/bin/telegram-codex command '{"action":"read","group_id":-1001234567890,"message_id":42}'
-.venv/bin/telegram-codex command '{"action":"task","group_id":-1001234567890,"message_id":42,"destination":"test"}'
-.venv/bin/telegram-codex command '{"action":"status","task_id":"returned-task-id"}'
-.venv/bin/telegram-codex command '{"action":"followup","task_id":"returned-task-id","message_id":43}'
+uv run --locked telegram-codex command '{"action":"configure","folder_id":7}'
+uv run --locked telegram-codex command '{"action":"read","group_id":-1001234567890,"message_id":42}'
+uv run --locked telegram-codex command '{"action":"task","group_id":-1001234567890,"message_id":42,"destination":"test"}'
+uv run --locked telegram-codex command '{"action":"status","task_id":"returned-task-id"}'
+uv run --locked telegram-codex command '{"action":"followup","task_id":"returned-task-id","message_id":43}'
 ```
 
 Use numeric Telegram marked group IDs (`-100…` for channels/megagroups, negative IDs for basic groups). Run from this repository or supply `--root /absolute/path/to/telegram-mcp` before the mode. `destination=test` explicitly selects the ignored local test workspace. Use `destination=project` for real work: an exact unique group-name match selects an existing Codex project, while absent or ambiguous matches return numbered project choices. No unresolved project falls back to the test destination. Task inputs and results stay under `<repository>/.local/tasks/<task-id>`; routed Codex work runs in the selected project’s working directory. See [project routing](docs/project-routing.md) for assignment commands and placement checks.
@@ -40,20 +57,28 @@ The existing Codex login/configuration must already work. The launcher uses inst
 After authenticating and selecting the folder, start the local listener:
 
 ```sh
-.venv/bin/python -m telegram_integration.listener --state-directory .local
+uv run --locked --env-file .env python -m telegram_integration.listener --state-directory .local
 ```
 
 Starting it enables monitoring and sends readiness messages to newly enabled groups. Prepare context in a project topic, then post a fresh `#codex` request yourself. Historical markers, edits adding the marker, forwarded messages, other authors, and generated integration output do not start work. Requests execute one at a time in durable admission order; current context is captured only through each trigger’s message ID. Deleting a pending trigger or removing its marker cancels that request. The listener maintains topic titles and pinned references, catches up in bounded batches, and retains queue progress across restarts. See [monitoring](docs/monitoring.md), [queue behavior](docs/queue.md), and [catch-up](docs/catchup.md).
 
 ## MCP
 
-Configure your MCP client to execute `.venv/bin/telegram-codex --root /absolute/path/to/telegram-mcp mcp` with `TELEGRAM_API_ID` and `TELEGRAM_API_HASH` in its environment. Authenticate with `login` first. The server uses newline-delimited JSON-RPC stdio, supports initialize/tools/list/tools/call, and exposes the `telegram` tool with the same command object as the CLI. Its shared `Application.handle(command)` boundary owns access and task policy; transports only translate envelopes.
+Configure your MCP client with executable `uv` and arguments:
+
+```json
+["run", "--directory", "/absolute/path/to/telegram-mcp", "--locked", "telegram-codex", "--root", "/absolute/path/to/telegram-mcp", "mcp"]
+```
+
+It reads credentials from that repository's `.env`; no exported variables are required. Authenticate with `login-qr` or `login` first. The server uses newline-delimited JSON-RPC stdio, supports initialize/tools/list/tools/call, and exposes the `telegram` tool with the same command object as the CLI. Its shared `Application.handle(command)` boundary owns access and task policy; transports only translate envelopes.
 
 ## State and verification
 
 ```sh
-.venv/bin/python -m unittest discover -s tests -v
+uv run --locked python -m unittest discover -s tests -v
 ```
+
+Add or remove dependencies with `uv add <package>` and `uv remove <package>`. Keep `pyproject.toml` and `uv.lock` together in version control.
 
 The suite uses real temporary SQLite stores/task folders, substituted external adapters, MCP/listener envelopes, Telethon TL contracts, and an executable app-server wire fixture. It checks selection completeness, attachments, routing, source delivery, permission blockers, serial queue ownership, frozen inputs, withdrawal, folder revocation, and restart/lost-acknowledgment recovery. Running this suite performs no live account/chat actions.
 

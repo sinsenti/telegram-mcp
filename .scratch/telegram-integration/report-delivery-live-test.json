@@ -1,0 +1,78 @@
+{
+  "phase": "verified",
+  "group_id": -1003989567415,
+  "topic_id": 21,
+  "text": "DELIVERY_REPLAY_CHECK_e55faecc7687",
+  "text_random_id": 4789734561333280678,
+  "file_random_id": 3205731757033381443,
+  "document": "/home/user/git/personal/telegram-mcp/.local/delivery-replay-e55faecc7687.md",
+  "document_sha256": "53cea2b3931adf150978d6b153773cef184419627d612cc6728dc6b00292c712",
+  "mappings": [
+    {
+      "random_id": 4789734561333280678,
+      "message_id": 38
+    },
+    {
+      "random_id": 4789734561333280678,
+      "message_id": 38
+    },
+    {
+      "random_id": 3205731757033381443,
+      "message_id": 39
+    },
+    {
+      "random_id": 3205731757033381443,
+      "message_id": 39
+    }
+  ],
+  "text_first_id": "38",
+  "text_replay_id": "38",
+  "file_first_id": "39",
+  "file_replay_id": "39",
+  "verifiedAt": "2026-11-16T14:31:26.774945+00:00",
+  "text_count": 1,
+  "file_count": 1,
+  "rpc_responses": [
+    {
+      "method": "SendMessageRequest",
+      "type": "Updates",
+      "mappings": [
+        {
+          "random_id": 4789734561333280678,
+          "message_id": 38
+        }
+      ]
+    },
+    {
+      "method": "SendMessageRequest",
+      "type": "Updates",
+      "mappings": [
+        {
+          "random_id": 4789734561333280678,
+          "message_id": 38
+        }
+      ]
+    },
+    {
+      "method": "SendMediaRequest",
+      "type": "Updates",
+      "mappings": [
+        {
+          "random_id": 3205731757033381443,
+          "message_id": 39
+        }
+      ]
+    },
+    {
+      "method": "SendMediaRequest",
+      "type": "Updates",
+      "mappings": [
+        {
+          "random_id": 3205731757033381443,
+          "message_id": 39
+        }
+      ]
+    }
+  ],
+  "no_codex_turns": true
+}

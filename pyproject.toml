@@ -7,7 +7,11 @@ name = "telegram-codex-integration"
 version = "0.1.0"
 description = "Local manual Telegram to Codex task integration"
 requires-python = ">=3.11"
-dependencies = ["Telethon>=1.45,<2"]
+dependencies = [
+    "Telethon>=1.45,<2",
+    "python-dotenv>=1,<2",
+    "qrcode>=8,<9",
+]
 
 [project.scripts]
 telegram-codex = "telegram_integration.cli:main"
