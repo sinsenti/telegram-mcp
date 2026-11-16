@@ -1,0 +1,747 @@
+{
+  "previous_attempt": {
+    "previous_attempt": {
+      "status": "failed",
+      "started_at": "2026-11-16T14:58:50.314558+00:00",
+      "folder_id": 8,
+      "group_id": -1003989567415,
+      "scope": "Actual Telegram membership changes and Application pause/readd; no Codex execution",
+      "raw_updates": [],
+      "before": {
+        "captured_at": "2026-11-16T14:58:51.185814+00:00",
+        "allowed_groups": [
+          -1003989567415
+        ],
+        "folder": {
+          "_": "DialogFilter",
+          "id": 8,
+          "title": {
+            "_": "TextWithEntities",
+            "text": "codex",
+            "entities": []
+          },
+          "pinned_peers": [],
+          "include_peers": [
+            {
+              "_": "InputPeerChannel",
+              "channel_id": 3989567415,
+              "access_hash": "[redacted]"
+            }
+          ],
+          "exclude_peers": [],
+          "contacts": false,
+          "non_contacts": false,
+          "groups": false,
+          "broadcasts": false,
+          "bots": false,
+          "exclude_muted": false,
+          "exclude_read": false,
+          "exclude_archived": false,
+          "title_noanimate": false,
+          "emoticon": "",
+          "color": 1
+        },
+        "exact_local_recovery_backup": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-filter-before.tl"
+      },
+      "topic_id": 41,
+      "topic_title": "Folder access test 145851",
+      "configure": {
+        "status": "configured",
+        "folder_id": 8
+      },
+      "initial_readiness": {
+        "status": "monitoring",
+        "generated_sends": [
+          {
+            "operation_id": "readiness:-1003989567415:41",
+            "group_id": -1003989567415,
+            "status": "confirmed"
+          }
+        ],
+        "held_events": [],
+        "discovery_progress": [],
+        "groups": [
+          {
+            "group_id": -1003989567415,
+            "cutoff": 42,
+            "status": "ready"
+          }
+        ],
+        "requests": []
+      },
+      "trigger_id": 43,
+      "admission": {
+        "status": "admitted"
+      },
+      "removal_intent_at": "2026-11-16T14:58:54.224631+00:00",
+      "error": "FilterIncludeEmptyError: The include_peers vector of the filter is empty (caused by UpdateDialogFilterRequest)",
+      "failed_at": "2026-11-16T14:58:54.293977+00:00",
+      "restore_after_failure": {
+        "restored_at": "2026-11-16T14:58:54.525088+00:00",
+        "test_membership_components": {
+          "include_peers": [
+            -1003989567415
+          ],
+          "pinned_peers": [],
+          "exclude_peers": []
+        },
+        "other_properties_policy": "Re-read current folder and patch only test group membership components"
+      },
+      "connection_closed_at": "2026-11-16T14:58:54.558935+00:00"
+    },
+    "status": "failed",
+    "started_at": "2026-11-16T14:59:33.426818+00:00",
+    "folder_id": 8,
+    "group_id": -1003989567415,
+    "scope": "Actual Telegram membership changes and Application pause/readd; no Codex execution",
+    "raw_updates": [],
+    "before": {
+      "captured_at": "2026-11-16T14:59:34.413741+00:00",
+      "allowed_groups": [
+        -1003989567415
+      ],
+      "folder": {
+        "_": "DialogFilter",
+        "id": 8,
+        "title": {
+          "_": "TextWithEntities",
+          "text": "codex",
+          "entities": []
+        },
+        "pinned_peers": [],
+        "include_peers": [
+          {
+            "_": "InputPeerChannel",
+            "channel_id": 3989567415,
+            "access_hash": "[redacted]"
+          }
+        ],
+        "exclude_peers": [],
+        "contacts": false,
+        "non_contacts": false,
+        "groups": false,
+        "broadcasts": false,
+        "bots": false,
+        "exclude_muted": false,
+        "exclude_read": false,
+        "exclude_archived": false,
+        "title_noanimate": false,
+        "emoticon": "",
+        "color": 1
+      },
+      "exact_local_recovery_backup": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-filter-before.tl"
+    },
+    "topic_id": 41,
+    "topic_title": "Folder access test 145851",
+    "configure": {
+      "status": "configured",
+      "folder_id": 8
+    },
+    "initial_readiness": {
+      "status": "monitoring",
+      "generated_sends": [
+        {
+          "operation_id": "readiness:-1003989567415:43",
+          "group_id": -1003989567415,
+          "status": "confirmed"
+        }
+      ],
+      "held_events": [],
+      "discovery_progress": [],
+      "groups": [
+        {
+          "group_id": -1003989567415,
+          "cutoff": 44,
+          "status": "ready"
+        }
+      ],
+      "requests": []
+    },
+    "trigger_id": 45,
+    "admission": {
+      "status": "admitted"
+    },
+    "removal_method": "Preserve include/pin lists; temporarily exclude only test group",
+    "removal_intent_at": "2026-11-16T14:59:37.657853+00:00",
+    "error": "AssertionError: ",
+    "failed_at": "2026-11-16T14:59:37.924831+00:00",
+    "restore_after_failure": {
+      "restored_at": "2026-11-16T14:59:38.298865+00:00",
+      "test_membership_components": {
+        "include_peers": [
+          -1003989567415
+        ],
+        "pinned_peers": [],
+        "exclude_peers": []
+      },
+      "other_properties_policy": "Re-read current folder and patch only test group membership components"
+    },
+    "connection_closed_at": "2026-11-16T14:59:38.309772+00:00"
+  },
+  "status": "passed_folder_lifecycle_and_active_resumed_chat_interruption",
+  "started_at": "2026-11-16T15:01:08.477743+00:00",
+  "folder_id": 8,
+  "group_id": -1003989567415,
+  "scope": "Actual Telegram membership changes and Application pause/readd; no Codex execution",
+  "raw_updates": [],
+  "sentinel_plan": {
+    "kind": "Saved Messages non-group",
+    "originally_absent": true,
+    "temporary_effect": "Keep explicit folder valid while its only project group is removed",
+    "restore": "Remove only temporary Saved Messages membership, restore original testgroup components; preserve current other properties"
+  },
+  "before": {
+    "captured_at": "2026-11-16T15:01:09.945852+00:00",
+    "allowed_groups": [
+      -1003989567415
+    ],
+    "folder": {
+      "_": "DialogFilter",
+      "id": 8,
+      "title": {
+        "_": "TextWithEntities",
+        "text": "codex",
+        "entities": []
+      },
+      "pinned_peers": [],
+      "include_peers": [
+        {
+          "_": "InputPeerChannel",
+          "channel_id": 3989567415,
+          "access_hash": "[redacted]"
+        }
+      ],
+      "exclude_peers": [],
+      "contacts": false,
+      "non_contacts": false,
+      "groups": false,
+      "broadcasts": false,
+      "bots": false,
+      "exclude_muted": false,
+      "exclude_read": false,
+      "exclude_archived": false,
+      "title_noanimate": false,
+      "emoticon": "",
+      "color": 1
+    },
+    "exact_local_recovery_backup": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-filter-before.tl"
+  },
+  "topic_id": 41,
+  "topic_title": "Folder access test 145851",
+  "configure": {
+    "status": "configured",
+    "folder_id": 8
+  },
+  "initial_readiness": {
+    "status": "monitoring",
+    "generated_sends": [
+      {
+        "operation_id": "readiness:-1003989567415:45",
+        "group_id": -1003989567415,
+        "status": "confirmed"
+      }
+    ],
+    "held_events": [],
+    "discovery_progress": [],
+    "groups": [
+      {
+        "group_id": -1003989567415,
+        "cutoff": 46,
+        "status": "ready"
+      }
+    ],
+    "requests": []
+  },
+  "trigger_id": 47,
+  "admission": {
+    "status": "admitted"
+  },
+  "removal_method": "Temporarily replace only testgroup include with authorized Saved Messages non-group sentinel",
+  "removal_intent_at": "2026-11-16T15:01:12.966914+00:00",
+  "removal_observation": "Actual membership refetch after own RPC; no Raw self-echo observed within four seconds",
+  "removed_status": {
+    "status": "monitoring",
+    "generated_sends": [
+      {
+        "operation_id": "readiness:-1003989567415:45",
+        "group_id": -1003989567415,
+        "status": "confirmed"
+      }
+    ],
+    "held_events": [],
+    "discovery_progress": [
+      {
+        "group_id": -1003989567415,
+        "message_id": 47
+      }
+    ],
+    "groups": [
+      {
+        "group_id": -1003989567415,
+        "cutoff": 46,
+        "status": "disabled"
+      }
+    ],
+    "requests": [
+      {
+        "sequence": 1,
+        "group_id": -1003989567415,
+        "message_id": 47,
+        "status": "paused",
+        "task_id": null,
+        "outcome": null
+      }
+    ]
+  },
+  "revoked_read": {
+    "status": "blocked",
+    "reason": "Group access is disabled after folder removal"
+  },
+  "revoked_search": {
+    "status": "blocked",
+    "reason": "Group access is disabled after folder removal"
+  },
+  "disabled_dispatch": {
+    "status": "idle"
+  },
+  "reconstructed_disabled": {
+    "status": "monitoring",
+    "generated_sends": [
+      {
+        "operation_id": "readiness:-1003989567415:45",
+        "group_id": -1003989567415,
+        "status": "confirmed"
+      }
+    ],
+    "held_events": [],
+    "discovery_progress": [
+      {
+        "group_id": -1003989567415,
+        "message_id": 47
+      }
+    ],
+    "groups": [
+      {
+        "group_id": -1003989567415,
+        "cutoff": 46,
+        "status": "disabled"
+      }
+    ],
+    "requests": [
+      {
+        "sequence": 1,
+        "group_id": -1003989567415,
+        "message_id": 47,
+        "status": "paused",
+        "task_id": null,
+        "outcome": null
+      }
+    ]
+  },
+  "restore": {
+    "restored_at": "2026-11-16T15:01:17.991252+00:00",
+    "test_membership_components": {
+      "include_peers": [
+        -1003989567415
+      ],
+      "pinned_peers": [],
+      "exclude_peers": []
+    },
+    "other_properties_policy": "Re-read current folder and patch only test group plus authorized Saved Messages sentinel components"
+  },
+  "still_gated_before_readiness": {
+    "status": "blocked",
+    "reason": "Group access is disabled after folder removal"
+  },
+  "readd_readiness": {
+    "status": "monitoring",
+    "generated_sends": [
+      {
+        "operation_id": "readiness:-1003989567415:45",
+        "group_id": -1003989567415,
+        "status": "confirmed"
+      },
+      {
+        "operation_id": "readiness:-1003989567415:47",
+        "group_id": -1003989567415,
+        "status": "confirmed"
+      }
+    ],
+    "held_events": [],
+    "discovery_progress": [
+      {
+        "group_id": -1003989567415,
+        "message_id": 47
+      }
+    ],
+    "groups": [
+      {
+        "group_id": -1003989567415,
+        "cutoff": 48,
+        "status": "ready"
+      }
+    ],
+    "requests": [
+      {
+        "sequence": 1,
+        "group_id": -1003989567415,
+        "message_id": 47,
+        "status": "paused",
+        "task_id": null,
+        "outcome": null
+      }
+    ]
+  },
+  "readd_dispatch": {
+    "status": "idle"
+  },
+  "fresh_trigger_id": 49,
+  "fresh_admission": {
+    "status": "admitted"
+  },
+  "final_status": {
+    "status": "monitoring",
+    "generated_sends": [
+      {
+        "operation_id": "readiness:-1003989567415:45",
+        "group_id": -1003989567415,
+        "status": "confirmed"
+      },
+      {
+        "operation_id": "readiness:-1003989567415:47",
+        "group_id": -1003989567415,
+        "status": "confirmed"
+      }
+    ],
+    "held_events": [],
+    "discovery_progress": [
+      {
+        "group_id": -1003989567415,
+        "message_id": 49
+      }
+    ],
+    "groups": [
+      {
+        "group_id": -1003989567415,
+        "cutoff": 48,
+        "status": "ready"
+      }
+    ],
+    "requests": [
+      {
+        "sequence": 1,
+        "group_id": -1003989567415,
+        "message_id": 47,
+        "status": "paused",
+        "task_id": null,
+        "outcome": null
+      },
+      {
+        "sequence": 2,
+        "group_id": -1003989567415,
+        "message_id": 49,
+        "status": "pending",
+        "task_id": null,
+        "outcome": null
+      }
+    ]
+  },
+  "finished_at": "2026-11-16T15:01:20.626512+00:00",
+  "active_turn_interruption": "Not exercised here; parent coordinates separate actual Codex interruption proof",
+  "codex_starts": 0,
+  "state_directory": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-sentinel",
+  "connection_closed_at": "2026-11-16T15:01:20.642714+00:00",
+  "contract_findings": {
+    "explicit_empty_folder": "Telegram rejected removing the sole include with FilterIncludeEmptyError; restored receipt verified",
+    "overlapping_include_exclude": "RPC accepted but effective membership stayed included; restored receipt verified",
+    "valid_removal": "Parent-authorized Saved Messages non-group sentinel kept folder valid while only allowed group was removed",
+    "raw_self_echo": "No Raw UpdateDialogFilter/UpdateDialogFilters self-echo within four seconds; actual membership refetch drove normalized folder_changed observation",
+    "terminal_interruption": "Public App link+dispatch saved exact chat/turn identifiers, actual membership removal paused request and acknowledged same-owner interruption; separate authoritative exact-turn readback confirmed interrupted",
+    "fresh_owner_interruption_limit": "Fresh first-turn control is not proven by this receipt; ticket13 is investigating the upstream owner/materialization distinction. Removal still durably gates/pauses and records unresolved interruption when unsupported."
+  },
+  "active_resumed_chat": {
+    "previous_attempt": {
+      "previous_attempt": null,
+      "status": "failed",
+      "started_at": "2026-11-16T15:03:59.110680+00:00",
+      "folder_id": 8,
+      "group_id": -1003989567415,
+      "scope": "Actual App active resumed-chat pause, folder removal and exact-turn terminal observation; no tools/project writes requested",
+      "raw_updates": [],
+      "sentinel_plan": {
+        "kind": "Saved Messages non-group",
+        "originally_absent": true,
+        "temporary_effect": "Keep explicit folder valid while its only project group is removed",
+        "restore": "Remove only temporary Saved Messages membership, restore original testgroup components; preserve current other properties"
+      },
+      "before": {
+        "captured_at": "2026-11-16T15:04:00.375166+00:00",
+        "allowed_groups": [
+          -1003989567415
+        ],
+        "folder": {
+          "_": "DialogFilter",
+          "id": 8,
+          "title": {
+            "_": "TextWithEntities",
+            "text": "codex",
+            "entities": []
+          },
+          "pinned_peers": [],
+          "include_peers": [
+            {
+              "_": "InputPeerChannel",
+              "channel_id": 3989567415,
+              "access_hash": "[redacted]"
+            }
+          ],
+          "exclude_peers": [],
+          "contacts": false,
+          "non_contacts": false,
+          "groups": false,
+          "broadcasts": false,
+          "bots": false,
+          "exclude_muted": false,
+          "exclude_read": false,
+          "exclude_archived": false,
+          "title_noanimate": false,
+          "emoticon": "",
+          "color": 1
+        },
+        "exact_local_recovery_backup": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-filter-before.tl"
+      },
+      "topic_id": 41,
+      "topic_title": "Folder access test 145846",
+      "configure": {
+        "status": "configured",
+        "folder_id": 8
+      },
+      "initial_readiness": {
+        "status": "monitoring",
+        "generated_sends": [
+          {
+            "operation_id": "readiness:-1003989567415:49",
+            "group_id": -1003989567415,
+            "status": "confirmed"
+          }
+        ],
+        "held_events": [],
+        "discovery_progress": [],
+        "groups": [
+          {
+            "group_id": -1003989567415,
+            "cutoff": 50,
+            "status": "ready"
+          }
+        ],
+        "requests": []
+      },
+      "error": "AssertionError: {'status': 'blocked', 'reason': 'Codex catalog server closed before responding'}",
+      "failed_at": "2026-11-16T15:04:04.537978+00:00",
+      "connection_closed_at": "2026-11-16T15:04:04.570046+00:00"
+    },
+    "status": "passed_active_resumed_chat_removal_with_busy_read_outcome",
+    "started_at": "2026-11-16T15:04:32.278979+00:00",
+    "folder_id": 8,
+    "group_id": -1003989567415,
+    "scope": "Actual App active resumed-chat pause, folder removal and exact-turn terminal observation; no tools/project writes requested",
+    "raw_updates": [],
+    "sentinel_plan": {
+      "kind": "Saved Messages non-group",
+      "originally_absent": true,
+      "temporary_effect": "Keep explicit folder valid while its only project group is removed",
+      "restore": "Remove only temporary Saved Messages membership, restore original testgroup components; preserve current other properties"
+    },
+    "before": {
+      "captured_at": "2026-11-16T15:04:33.269068+00:00",
+      "allowed_groups": [
+        -1003989567415
+      ],
+      "folder": {
+        "_": "DialogFilter",
+        "id": 8,
+        "title": {
+          "_": "TextWithEntities",
+          "text": "codex",
+          "entities": []
+        },
+        "pinned_peers": [],
+        "include_peers": [
+          {
+            "_": "InputPeerChannel",
+            "channel_id": 3989567415,
+            "access_hash": "[redacted]"
+          }
+        ],
+        "exclude_peers": [],
+        "contacts": false,
+        "non_contacts": false,
+        "groups": false,
+        "broadcasts": false,
+        "bots": false,
+        "exclude_muted": false,
+        "exclude_read": false,
+        "exclude_archived": false,
+        "title_noanimate": false,
+        "emoticon": "",
+        "color": 1
+      },
+      "exact_local_recovery_backup": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-filter-before.tl"
+    },
+    "topic_id": 41,
+    "topic_title": "Folder access test 145851",
+    "configure": {
+      "status": "configured",
+      "folder_id": 8
+    },
+    "initial_readiness": {
+      "status": "monitoring",
+      "generated_sends": [
+        {
+          "operation_id": "readiness:-1003989567415:49",
+          "group_id": -1003989567415,
+          "status": "confirmed"
+        }
+      ],
+      "held_events": [],
+      "discovery_progress": [],
+      "groups": [
+        {
+          "group_id": -1003989567415,
+          "cutoff": 50,
+          "status": "ready"
+        }
+      ],
+      "requests": []
+    },
+    "linked": {
+      "task_id": "9f697cbb0f914c35a75fd613abad8d73",
+      "group_id": -1003989567415,
+      "topic_id": 41,
+      "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+      "cwd": "/home/user/git/personal/help",
+      "chat_id": "01a1e4dc-af9f-7c32-b363-e6bef9e8be0c",
+      "folder": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-active/tasks/9f697cbb0f914c35a75fd613abad8d73",
+      "status": "linked",
+      "run": 0,
+      "membership": "unique_project_cwd"
+    },
+    "trigger_id": 51,
+    "admission": {
+      "status": "admitted"
+    },
+    "accepted_turn_id": "01a1e4e3-a836-7620-a61f-25c2490cce2f",
+    "accepted_task": {
+      "task_id": "9f697cbb0f914c35a75fd613abad8d73",
+      "group_id": -1003989567415,
+      "topic_id": 41,
+      "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+      "cwd": "/home/user/git/personal/help",
+      "chat_id": "01a1e4dc-af9f-7c32-b363-e6bef9e8be0c",
+      "folder": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-active/tasks/9f697cbb0f914c35a75fd613abad8d73",
+      "status": "running",
+      "run": 1,
+      "membership": "unique_project_cwd",
+      "message_id": 51,
+      "scope": "topic",
+      "access_epoch": 0,
+      "reason": null,
+      "inputs": [],
+      "phase": "executing",
+      "client_request_id": "c81fa330-32ac-43b2-8cc8-aad996cb7b57",
+      "turn_id": "01a1e4e3-a836-7620-a61f-25c2490cce2f"
+    },
+    "removal_method": "Temporarily replace only testgroup include with authorized Saved Messages non-group sentinel",
+    "removal_intent_at": "2026-11-16T15:04:47.535335+00:00",
+    "removal_observation": "Actual membership refetch after own RPC; no Raw self-echo observed within four seconds",
+    "removed_status": {
+      "status": "monitoring",
+      "generated_sends": [
+        {
+          "operation_id": "readiness:-1003989567415:49",
+          "group_id": -1003989567415,
+          "status": "confirmed"
+        }
+      ],
+      "held_events": [],
+      "discovery_progress": [
+        {
+          "group_id": -1003989567415,
+          "message_id": 51
+        }
+      ],
+      "groups": [
+        {
+          "group_id": -1003989567415,
+          "cutoff": 50,
+          "status": "disabled"
+        }
+      ],
+      "requests": [
+        {
+          "sequence": 1,
+          "group_id": -1003989567415,
+          "message_id": 51,
+          "status": "paused",
+          "task_id": "9f697cbb0f914c35a75fd613abad8d73",
+          "outcome": null
+        }
+      ]
+    },
+    "revoked_read": {
+      "status": "busy",
+      "reason": "Another execution owns the Codex adapter"
+    },
+    "revoked_search": {
+      "status": "busy",
+      "reason": "Another execution owns the Codex adapter"
+    },
+    "failed_at": "2026-11-16T15:04:52.178375+00:00",
+    "restore_after_failure": {
+      "restored_at": "2026-11-16T15:04:52.576061+00:00",
+      "test_membership_components": {
+        "include_peers": [
+          -1003989567415
+        ],
+        "pinned_peers": [],
+        "exclude_peers": []
+      },
+      "other_properties_policy": "Re-read current folder and patch only test group plus authorized Saved Messages sentinel components"
+    },
+    "connection_closed_at": "2026-11-16T15:04:52.587146+00:00",
+    "paused_active_task": {
+      "task_id": "9f697cbb0f914c35a75fd613abad8d73",
+      "group_id": -1003989567415,
+      "topic_id": 41,
+      "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+      "cwd": "/home/user/git/personal/help",
+      "chat_id": "01a1e4dc-af9f-7c32-b363-e6bef9e8be0c",
+      "folder": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-active/tasks/9f697cbb0f914c35a75fd613abad8d73",
+      "status": "paused",
+      "run": 1,
+      "membership": "unique_project_cwd",
+      "message_id": 51,
+      "scope": "topic",
+      "access_epoch": 0,
+      "reason": "Group was removed from the selected Telegram folder",
+      "inputs": [],
+      "phase": "executing",
+      "client_request_id": "c81fa330-32ac-43b2-8cc8-aad996cb7b57",
+      "turn_id": "01a1e4e3-a836-7620-a61f-25c2490cce2f",
+      "report_blocker": "Group access is disabled after folder removal",
+      "interruption": {
+        "turn_id": "01a1e4e3-a836-7620-a61f-25c2490cce2f",
+        "status": "acknowledged"
+      }
+    },
+    "terminal_observation": {
+      "turn_id": "01a1e4e3-a836-7620-a61f-25c2490cce2f",
+      "status": "interrupted",
+      "reason": null,
+      "readback_after_owner_closed": true
+    },
+    "probe_assertion_correction": "Busy reads/search while execution owner runs initiate no Telegram content operation; Telegram-only probe separately established blocked disabled reads/search.",
+    "probe_assertion_error": "AssertionError: ",
+    "codex_starts": 1
+  }
+}
