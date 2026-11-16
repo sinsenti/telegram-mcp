@@ -189,6 +189,107 @@ class Application:
             self.db.execute('INSERT OR REPLACE INTO group_projects VALUES (?,?)',(group,json.dumps(saved)))
         return saved
 
+    async def _chat_choices(self, project):
+        projects = await asyncio.to_thread(self.catalog.refresh)
+        matches = [p for p in projects if p.id == project['project_id']]
+        if len(matches) != 1 or [str(root) for root in matches[0].roots] != [project['cwd']]:
+            raise Blocked('Assigned project changed during chat selection; refresh')
+        # A legacy unassigned chat can belong by exact cwd only when precisely
+        # one catalog project owns it. Non-null canonical membership wins.
+        unique_root = sum(str(root) == project['cwd'] for p in projects for root in p.roots) == 1
+        chats = await self.codex.list_chats(project['project_id'], Path(project['cwd']))
+        result = []
+        seen = set()
+        for chat in chats:
+            identity = chat.get('chat_id')
+            if not isinstance(identity, str) or not identity or identity in seen:
+                raise Blocked('Codex returned invalid or duplicate chat identifiers')
+            seen.add(identity)
+            if chat.get('cwd') != project['cwd']:
+                continue
+            canonical = chat.get('project_id')
+            if canonical == project['project_id'] or (canonical is None and unique_root):
+                result.append({'chat_id':identity,'title':chat.get('title') or identity,
+                               'membership':'canonical' if canonical else 'unique_project_cwd'})
+        return result
+
+    async def _link(self, c):
+        group, topic = int(c['group_id']), int(c['topic_id'])
+        await self._access(group)
+        project = await self._project(group)
+        if project.get('status') == 'project_choice':
+            return project
+        chats = await self._chat_choices(project)
+        await self._access(group)
+        if 'choice_id' not in c:
+            identity = self._remember({'kind':'chat','group_id':group,'topic_id':topic,
+                                       'project':project,'chats':chats})
+            with self.db:
+                self.db.execute('CREATE TABLE IF NOT EXISTS topic_choices (group_id INTEGER, topic_id INTEGER, choice_id TEXT, PRIMARY KEY(group_id,topic_id))')
+                self.db.execute('INSERT OR REPLACE INTO topic_choices VALUES (?,?,?)',(group,topic,identity))
+            return {'status':'chat_choice','choice_id':identity,'group_id':group,'topic_id':topic,
+                    'choices':[dict(chat,choice=i+1) for i,chat in enumerate(chats)]}
+        saved = self._selection(c['choice_id'])
+        choice = c.get('choice')
+        if (saved.get('kind') != 'chat' or saved['group_id'] != group or saved['topic_id'] != topic
+                or saved['project'] != project or type(choice) is not int or not 1 <= choice <= len(saved['chats'])):
+            raise Blocked('Choose a valid presented chat for this project and topic')
+        pending = self.db.execute('SELECT choice_id FROM topic_choices WHERE group_id=? AND topic_id=?',(group,topic)).fetchone()
+        if not pending or pending[0] != c['choice_id']:
+            raise Blocked('Chat choices expired; send #link again')
+        selected = saved['chats'][choice-1]
+        current = next((chat for chat in chats if chat['chat_id'] == selected['chat_id']), None)
+        if current is None:
+            raise Blocked('Selected chat disappeared or changed project; refresh choices')
+        for other_group, other_topic, task_id in self.db.execute('SELECT group_id,topic_id,task_id FROM topic_tasks'):
+            if (other_group,other_topic) != (group,topic) and self._task(task_id).get('chat_id') == selected['chat_id']:
+                raise Blocked('Selected chat already has another Telegram topic')
+        row = self.db.execute('SELECT task_id FROM topic_tasks WHERE group_id=? AND topic_id=?',(group,topic)).fetchone()
+        previous = self._task(row[0]) if row else None
+        if previous and previous['status'] not in ('finished','linked'):
+            raise Blocked('Inspect unfinished topic work before linking another chat')
+        if previous and previous['chat_id'] == selected['chat_id']:
+            task = previous
+        else:
+            retained = [json.loads(row[0]) for row in self.db.execute('SELECT data FROM tasks')]
+            retained = [t for t in retained if t.get('chat_id') == selected['chat_id'] and t.get('group_id') == group and t.get('topic_id') == topic and t.get('project_id') == project['project_id'] and t.get('cwd') == project['cwd']]
+            if retained:
+                task = retained[-1]
+                if task['status'] not in ('finished','linked'):
+                    raise Blocked('Inspect unfinished selected chat work before linking')
+            else:
+                task_id = uuid.uuid4().hex
+                task = {'task_id':task_id,'group_id':group,'topic_id':topic,**project,
+                    'chat_id':selected['chat_id'],'folder':str(self.workspace/task_id),
+                    'status':'linked','run':0,'membership':current['membership']}
+            owned_directory(Path(task['folder']))
+        task['membership'] = current['membership']
+        self._save(task)
+        with self.db:
+            self.db.execute('INSERT OR REPLACE INTO topic_tasks VALUES (?,?,?)',(group,topic,task['task_id']))
+            self.db.execute('DELETE FROM topic_choices WHERE group_id=? AND topic_id=?',(group,topic))
+        return dict(task,status='linked')
+
+    async def _chat_command(self, c):
+        # Listener owns fresh human-author/generation eligibility. This boundary
+        # independently resolves the actual source topic and never scans context.
+        text = c.get('text','').strip()
+        if text != '#link' and not (text.isascii() and text.isdecimal()):
+            return {'status':'ignored'}
+        message = await self._read(int(c['group_id']),int(c['message_id']))
+        if message.text.strip() != text:
+            raise Blocked('Command text differs from its current source message')
+        if message.topic_id is None:
+            raise Blocked('Chat linking requires a Telegram topic')
+        normalized = {'group_id':message.group_id,'topic_id':message.topic_id}
+        if text == '#link':
+            return await self._link(normalized)
+        self.db.execute('CREATE TABLE IF NOT EXISTS topic_choices (group_id INTEGER, topic_id INTEGER, choice_id TEXT, PRIMARY KEY(group_id,topic_id))')
+        row = self.db.execute('SELECT choice_id FROM topic_choices WHERE group_id=? AND topic_id=?',(message.group_id,message.topic_id)).fetchone()
+        if not row:
+            return {'status':'ignored'}
+        return await self._link(dict(normalized,choice_id=row[0],choice=int(text)))
+
     async def _placement(self, task):
         # Standalone thread/read observes canonical server assignment, not the
         # desktop's independently cached sidebar. Never claim the latter here.
@@ -199,8 +300,10 @@ class Application:
                 observations.append(observed)
                 if observed.get('chat_id') != task['chat_id']:
                     break
-                if observed.get('project_id') == task['project_id'] and observed.get('cwd') == task['cwd']:
-                    return {'status':'server_verified_desktop_unverified','observations':observations}
+                canonical = observed.get('project_id') == task['project_id']
+                legacy = task.get('membership') == 'unique_project_cwd' and observed.get('project_id') is None
+                if (canonical or legacy) and observed.get('cwd') == task['cwd']:
+                    return {'status':'legacy_cwd_verified_desktop_unverified' if legacy else 'server_verified_desktop_unverified','observations':observations}
                 await asyncio.sleep(0.2)
             except Exception as error:
                 observations.append({'error':str(error)})
@@ -218,6 +321,10 @@ class Application:
             return {'status':'configured', 'folder_id':folder}
         if action == 'project':
             return await self._project(int(c['group_id']),c.get('choice_id'),c.get('choice'))
+        if action == 'link':
+            return await self._link(c)
+        if action == 'chat_command':
+            return await self._chat_command(c)
         if action == 'sync_reference':
             from .references import synchronize
             return await synchronize(self, self._task(c['task_id']))
@@ -289,7 +396,7 @@ class Application:
                           and task.get('phase') in ('capturing_inputs','terminal_result')
                           and not task.get('report_blocker')
                           and task.get('placement',{}).get('status') != 'unresolved')
-            if task['status'] != 'finished' and not can_continue:
+            if task['status'] not in ('finished','linked') and not can_continue:
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
             if 'group_id' in c and int(c['group_id']) != task['group_id']:
@@ -304,6 +411,10 @@ class Application:
                 return project
             if project.get('project_id') != task['project_id'] or project.get('cwd') != task['cwd']:
                 raise Blocked('Task destination differs from its group assignment')
+        if task.get('membership'):
+            chats = await self._chat_choices(project)
+            if not any(chat['chat_id'] == task['chat_id'] for chat in chats):
+                raise Blocked('Linked chat no longer belongs to the assigned project')
         context = await self._context(task)
         if not context.complete:
             raise Blocked('Selected context is incomplete: '+str(context.reason or 'history unavailable'))

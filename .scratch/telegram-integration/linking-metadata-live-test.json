@@ -1,0 +1,28 @@
+{
+  "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+  "cwd": "/home/user/git/personal/help",
+  "unique_root": true,
+  "chats": [
+    {
+      "chat_id": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+      "title": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+      "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+      "cwd": "/home/user/git/personal/help"
+    },
+    {
+      "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+      "title": "Telegram connection test - verified",
+      "project_id": null,
+      "cwd": "/home/user/git/personal/help"
+    },
+    {
+      "chat_id": "01a1df7f-8ac9-7452-962e-16d3232d2647",
+      "title": "AI Helper",
+      "project_id": null,
+      "cwd": "/home/user/git/personal/help"
+    }
+  ],
+  "verified_at": "2026-11-16T13:12:25.098047+00:00",
+  "scope": "Read-only assigned help project active chat metadata; no turns or conversation content read, no chats or Telegram writes created",
+  "eligible_count": 3
+}
