@@ -36,7 +36,10 @@ Every remote attempt rechecks current folder access. Disabled groups retain loca
 results and pending sends; restore access explicitly before recovery. This does
 not resume a paused queue request. Older confirmed generated-sends rows remain
 confirmed. Older uncertain rows have no reconstructible payload/random ID and
-remain blockers requiring manual inspection. An adapter without stable-ID support
+remain blockers requiring manual inspection. An older task left mid-reporting also
+blocks when its missing reports cannot be associated with known identities, even
+if an old unassociated send row says confirmed. Completed task report IDs remain
+valid. An adapter without stable-ID support
 can complete its first send but cannot replay an uncertain send.
 
 ## Validation

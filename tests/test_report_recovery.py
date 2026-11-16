@@ -86,3 +86,20 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result['operations'],[{'operation_id':'old-unknown','status':'blocked','reason':'Legacy send lacks durable payload and random identity; inspect Telegram manually'}])
             self.assertEqual(telegram.remote,{})
             await app.close()
+
+    async def test_legacy_reporting_task_with_unassociated_confirmed_send_never_replays(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); telegram=DurableTelegram(); app=Application(root/'db',root/'tasks',telegram,Codex())
+            await app.handle({'action':'configure','folder_id':7})
+            document=root/'old.md'; document.write_text('Already delivered file')
+            legacy=dict(task_id='old',group_id=10,message_id=42,topic_id=None,run=1,status='blocked',phase='reporting',explanation='Known old work',document=str(document))
+            # Simulate the old schema's crash between confirmed send and task save.
+            with app.db:
+                app.db.execute('INSERT INTO tasks VALUES (?,?)',('old',json.dumps(legacy)))
+                app.db.execute('INSERT INTO generated_sends VALUES (?,?,?)',('unassociated-confirmed',10,'confirmed'))
+            result=await app.handle({'action':'reconcile_reports','task_id':'old'})
+            self.assertEqual(result['status'],'blocked')
+            self.assertIn('Legacy',result['reason'])
+            self.assertEqual(telegram.remote,{})
+            await app.close()

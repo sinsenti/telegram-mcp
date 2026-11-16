@@ -184,6 +184,8 @@ class Application:
         return await self.outgoing.send(kind,group,args,operation_key)
 
     async def _deliver_reports(self, task):
+        if not task.get('reporting_version') and len(task.get('report_ids',[]))<2:
+            raise Blocked('Legacy task reporting lacks durable operation identity; inspect Telegram manually')
         prefix=f"task:{task['task_id']}:run:{task['run']}"
         if not task.get('report_ids'):
             task['report_ids']=[await self._send_generated('text',task['group_id'],task['message_id'],task['explanation'],task['topic_id'],operation_key=prefix+':text')]
@@ -606,6 +608,7 @@ class Application:
             document = folder/f"result-{task['run']}.md"
             document.write_text(result.markdown)
             task['document'] = str(document)
+            task['reporting_version'] = 1
             self._save(task)
             await self._deliver_reports(task)
         except Exception as exc:
