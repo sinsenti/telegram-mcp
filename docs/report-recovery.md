@@ -57,6 +57,14 @@ edited reports after lost text acknowledgments, mutations during sends and adapt
 peer/upload awaits, missing legacy document identity, historical queue-outcome
 preservation, revoked access, account changes, early echoes and held human requests.
 Reference tests cover lost creation, edit, rename and pin acknowledgments. Focused adapter
-tests verify stable IDs and matching UpdateMessageID extraction. Live adapter evidence is
-recorded separately after the controlled allowed-group text/upload replay fixture; local
-substitutes alone do not prove server dedup.
+tests verify stable IDs and matching UpdateMessageID extraction.
+
+Actual adapter verification passed in the authorized allowed group/topic: stable-ID text
+and document replay preserved messages 38 and 39. The final snapshot proof mutated the
+source path during both real SDK upload attempts, injected a lost acknowledgment after
+the first accepted SendMedia response, and replayed the same random ID. Both responses
+mapped to message 40; topic readback found one file, and its downloaded hash matched the
+original immutable bytes while the source path remained changed. No Codex turn was
+started. [Live evidence](../.scratch/telegram-integration/frozen-report-delivery-live-test.json)
+includes the earlier text/upload proof. These bounded proofs verify the exercised server
+replay mechanism; unknown outcomes without matching evidence remain blocked.

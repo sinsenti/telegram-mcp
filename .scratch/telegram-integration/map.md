@@ -29,6 +29,8 @@ The user authorized running these controlled Telegram/Codex integration tests wi
 
 - [Ticket 09](./issues/09-queue-requests-with-fixed-context-and-withdrawal.md#answer) is resolved: durable globally serialized queue, current bounded/frozen inputs, withdrawal, restart continuity and conservative unknown-outcome blocking. 93 hermetic tests passed; no additional live turns. [Queue behavior](../../docs/queue.md).
 
+- [Ticket 14](./issues/14-reconcile-uncertain-telegram-reporting.md#answer) is resolved after real stable-ID text/upload replay and final immutable-payload lost-ACK proof. SDK upload bytes stayed original despite source-path mutation; replay preserved one remote file 40 and its downloaded hash. [Evidence](./frozen-report-delivery-live-test.json).
+
 ## Fog
 
-- Tickets 10–13 are now unblocked by ticket 09. Ticket 14 (uncertain Telegram reporting) is being implemented independently.
+- Tickets 10–13 are now unblocked by ticket 09. Ticket 14 reporting recovery is resolved with actual adapter evidence.
