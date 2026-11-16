@@ -290,6 +290,20 @@ class Application:
             return {'status':'ignored'}
         return await self._link(dict(normalized,choice_id=row[0],choice=int(text)))
 
+    def _validate_topic_binding(self, task):
+        if not task.get('project_id'):
+            return
+        row = self.db.execute('SELECT task_id FROM topic_tasks WHERE group_id=? AND topic_id=?',
+                              (task['group_id'],task.get('topic_id'))).fetchone()
+        if not row or row[0] != task['task_id']:
+            raise Blocked('Task topic binding was superseded; use the current topic chat')
+        for group, topic, task_id in self.db.execute('SELECT group_id,topic_id,task_id FROM topic_tasks'):
+            owner = self._task(task_id)
+            if task.get('chat_id') and owner.get('chat_id') == task['chat_id'] and (
+                    (group,topic) != (task['group_id'],task['topic_id'])
+                    or (owner.get('group_id'),owner.get('topic_id')) != (group,topic)):
+                raise Blocked('Linked chat has a different Telegram topic owner')
+
     async def _placement(self, task):
         # Standalone thread/read observes canonical server assignment, not the
         # desktop's independently cached sidebar. Never claim the latter here.
@@ -392,6 +406,7 @@ class Application:
                 task.update(project,topic_id=selected.topic_id)
         else:
             task = self._task(c['task_id'])
+            self._validate_topic_binding(task)
             can_continue=(task['status']=='blocked'
                           and task.get('phase') in ('capturing_inputs','terminal_result')
                           and not task.get('report_blocker')

@@ -120,3 +120,28 @@ class LinkingTests(unittest.IsolatedAsyncioTestCase):
         result=await self.task()
         self.assertEqual((result['status'],result['chat_id']),('finished','existing'))
         self.assertEqual(self.codex.created,[])
+
+    async def test_superseded_explicit_followup_cannot_revive_chat_owned_by_another_topic(self):
+        from telegram_integration.contracts import Context, Message
+        self.chats.append(dict(self.chats[0],chat_id='second',title='Other work'))
+        choices=await self.link()
+        old=await self.link(choice_id=choices['choice_id'],choice=1)
+        choices=await self.link()
+        replacement=await self.link(choice_id=choices['choice_id'],choice=2)
+        choices=await self.app.handle(dict(action='link',group_id=10,topic_id=9))
+        moved=await self.app.handle(dict(action='link',group_id=10,topic_id=9,
+                                       choice_id=choices['choice_id'],choice=1))
+        result=await self.app.handle(dict(action='followup',task_id=old['task_id'],message_id=3))
+        self.assertEqual(result['status'],'blocked',result)
+        self.assertEqual(self.codex.runs,[])
+        self.assertEqual(self.codex.created,[])
+        self.assertEqual(await self.app.handle(dict(action='status',task_id=old['task_id'])),old)
+        original_topic=await self.task()
+        async def message(group,identity): return Message(group,identity,'Continue moved chat',topic_id=9)
+        async def context(group,identity,scope): return Context((await message(group,identity),))
+        self.telegram.message=message
+        self.telegram.context=context
+        moved_topic=await self.task()
+        self.assertEqual((original_topic['task_id'],original_topic['chat_id']),
+                         (replacement['task_id'],'second'))
+        self.assertEqual((moved_topic['task_id'],moved_topic['chat_id']),(moved['task_id'],'existing'))

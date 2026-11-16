@@ -102,3 +102,28 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['reference_sync']['observation']['status'],'pending')
         self.assertEqual(result['project_id'],'server-help')
         self.assertEqual(result['chat_id'],'actual-chat')
+
+    async def test_metadata_failure_keeps_verified_title_and_refreshes_completed_status(self):
+        async def chats(project_id,cwd):
+            return [dict(chat_id='existing',title='Canonical name',project_id=project_id,cwd=str(cwd))]
+        self.codex.list_chats=chats
+        choices=await self.app.handle(dict(action='link',group_id=10,topic_id=2))
+        task=await self.app.handle(dict(action='link',group_id=10,topic_id=2,
+                                        choice_id=choices['choice_id'],choice=1))
+        self.title='Canonical name'
+        await self.sync(task)
+        self.assertIn('Status: linked',self.references['80'])
+        finished=await self.task()
+        self.assertEqual(finished['status'],'finished',finished)
+        self.topic='Manual topic name'
+        async def unavailable(*args): raise ConnectionError('Codex metadata unavailable')
+        self.codex.observe_chat=unavailable
+        result=await self.sync(finished)
+        state=result['reference_sync']
+        self.assertEqual(state['observation']['status'],'failed')
+        self.assertIn('metadata unavailable',state['observation']['reason'])
+        self.assertEqual(state['name'],'Canonical name')
+        self.assertIn('Chat: Canonical name\nStatus: finished',self.references['80'])
+        self.assertEqual(state['reference']['status'],'current')
+        self.assertEqual(state['pin']['status'],'current')
+        self.assertEqual(self.topic,'Canonical name')
