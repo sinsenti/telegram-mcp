@@ -36,9 +36,47 @@ class Recovery:
                 raise Blocked('Captured task snapshot changed; automatic recovery cannot recapture it')
         return (folder/f"input-{task['run']}.txt").read_text()
 
+    async def observe(self, task):
+        app=self.app
+        if not task.get('chat_id'):
+            raise Blocked('Execution lacks a known chat identity')
+        cwd=Path(task.get('cwd',task['folder']))
+        if task.get('turn_id'):
+            observation=await app.codex.observe_turn(task['chat_id'],cwd,task['turn_id'])
+        elif task.get('client_request_id'):
+            observation=await app.codex.find_turn(task['chat_id'],cwd,task['client_request_id'])
+        else:
+            raise Blocked('Execution lacks a known turn or durable correlation identity')
+        if task.get('turn_id') and observation.turn_id!=task['turn_id']:
+            raise Blocked('Codex recovered a different turn identity')
+        if observation.turn_id:
+            task['turn_id']=observation.turn_id; app._save(task)
+        if observation.result and observation.result.turn_id!=observation.turn_id:
+            raise Blocked('Recovered result has a different turn identity')
+        return observation
+
+    async def paused(self, task):
+        """Read back Codex progress without restoring any revoked authority."""
+        if task.get('phase')!='executing': return task
+        try:
+            observation=await self.observe(task)
+            if observation.status=='completed':
+                if observation.result:
+                    self.app._store_result(task,observation.result)
+                else:
+                    task.update(phase='terminal_result',terminal_error=observation.reason or 'Completed turn has no recoverable structured result')
+            elif observation.status in ('interrupted','failed'):
+                task['phase']='terminal_'+observation.status
+            task['reason']=observation.reason or 'Access remains paused; known turn is '+observation.status
+        except Exception as exc:
+            task['reason']=str(exc)
+        task['status']='paused'; self.app._save(task)
+        return task
+
     async def one(self, task):
         app=self.app; phase=task.get('phase')
         try:
+            if task.get('status')=='paused': return await self.paused(task)
             if phase in ('reporting','complete'):
                 return await app._handle({'action':'reconcile_reports','task_id':task['task_id']})
             await app._access(task['group_id'])
@@ -57,6 +95,7 @@ class Recovery:
                 result=await app._start_captured(task,text,inputs)
                 await app._finish_result(task,result,inputs)
             elif phase == 'terminal_result':
+                if task.get('terminal_error'): raise Blocked(task['terminal_error'])
                 data=json.loads((Path(task['folder'])/f"run-result-{task['run']}.json").read_text())
                 data['input_evidence']=tuple(InputEvidence(**item) for item in data.get('input_evidence',[]))
                 result=RunResult(**data)
@@ -66,24 +105,13 @@ class Recovery:
             elif phase == 'creating_chat':
                 raise Blocked('Chat creation outcome is unresolved; no replacement chat will be created')
             elif phase == 'executing':
-                if not task.get('chat_id'):
-                    raise Blocked('Execution lacks a known chat identity')
-                cwd=Path(task.get('cwd',task['folder']))
-                if task.get('turn_id'):
-                    observation=await app.codex.observe_turn(task['chat_id'],cwd,task['turn_id'])
-                elif task.get('client_request_id'):
-                    observation=await app.codex.find_turn(task['chat_id'],cwd,task['client_request_id'])
-                else:
-                    raise Blocked('Execution lacks a known turn or durable correlation identity')
-                if task.get('turn_id') and observation.turn_id!=task['turn_id']:
-                    raise Blocked('Codex recovered a different turn identity')
-                if observation.turn_id:
-                    task['turn_id']=observation.turn_id; app._save(task)
+                observation=await self.observe(task)
                 if observation.status=='completed':
                     # Protocol completion is final even if structured output is missing.
                     task['phase']='terminal_result'; app._save(task)
                     if observation.result is None:
-                        raise Blocked(observation.reason or 'Completed turn has no recoverable structured result')
+                        task['terminal_error']=observation.reason or 'Completed turn has no recoverable structured result'
+                        raise Blocked(task['terminal_error'])
                     if observation.result.turn_id!=observation.turn_id:
                         raise Blocked('Recovered result has a different turn identity')
                     await app._finish_result(task,observation.result,self.inputs(task))

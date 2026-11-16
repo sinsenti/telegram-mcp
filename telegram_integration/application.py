@@ -403,13 +403,17 @@ class Application:
         return {'status':'unresolved','observations':observations,
                 'reason':'Project placement could not be reconciled; inspect before continuing'}
 
-    async def _finish_result(self, task, result, inputs):
+    def _store_result(self, task, result):
         folder=Path(task['folder'])
         task.update(turn_id=result.turn_id, explanation=result.explanation,
                     result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
         (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
         task['phase']='terminal_result'
         self._save(task)
+
+    async def _finish_result(self, task, result, inputs):
+        folder=Path(task['folder'])
+        self._store_result(task,result)
         if task.get('project_id'):
             task['placement']=await self._placement(task)
         (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))

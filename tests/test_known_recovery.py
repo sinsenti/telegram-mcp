@@ -143,3 +143,88 @@ class KnownRecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result['tasks'][0]['status'],'blocked',result)
             self.assertEqual(result['tasks'][0]['phase'],'terminal_result')
         self.assertEqual(len(self.codex.runs),1)
+
+    async def test_recovery_cannot_observe_or_start_while_another_instance_owns_worker(self):
+        import asyncio
+        started=asyncio.Event(); finish=asyncio.Event()
+        async def run(chat,cwd,prompt,**kwargs):
+            await kwargs['on_turn_accepted']('owned-turn')
+            started.set(); await finish.wait()
+            from telegram_integration.contracts import RunResult
+            return RunResult('Done','Output','owned-turn')
+        self.codex.run=run; self.telegram.lose=None
+        worker=asyncio.create_task(self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42)))
+        await asyncio.wait_for(started.wait(),2)
+        other=self.construct()
+        try:
+            self.assertEqual((await other.handle({'action':'recover'}))['status'],'busy')
+            self.assertEqual((await self.app.handle({'action':'recover'}))['status'],'busy')
+        finally:
+            finish.set(); await worker; await other.close()
+
+    async def observed_terminal_case(self, remote_status):
+        from types import SimpleNamespace
+        async def lost(chat,cwd,prompt,**kwargs):
+            await kwargs['on_turn_accepted']('known-'+remote_status)
+            self.codex.runs.append((chat,cwd,prompt))
+            raise ConnectionError('lost')
+        self.codex.run=lost
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        async def observe(chat,cwd,turn):
+            return SimpleNamespace(turn_id=turn,status=remote_status,result=None,reason='Observed '+remote_status)
+        self.codex.observe_turn=observe
+        await self.restart()
+        before=len(self.codex.runs)
+        result=await self.app.handle({'action':'recover','task_id':first['task_id']})
+        task=result['tasks'][0]
+        self.assertEqual(task['status'],'blocked',task)
+        self.assertEqual(len(self.codex.runs),before)
+        self.assertEqual(task['phase'],'terminal_'+remote_status if remote_status in ('interrupted','failed') else 'executing')
+    async def test_running_turn_does_not_restart(self): await self.observed_terminal_case('inProgress')
+    async def test_interrupted_turn_does_not_restart(self): await self.observed_terminal_case('interrupted')
+    async def test_failed_turn_does_not_restart(self): await self.observed_terminal_case('failed')
+    async def test_unknown_turn_does_not_restart(self): await self.observed_terminal_case('unknown')
+
+    async def test_queue_order_and_task_binding_survive_worker_crash_and_recovery(self):
+        import asyncio
+        from types import SimpleNamespace
+        from tests.test_routing import Telegram, Codex, Catalog
+        from telegram_integration.contracts import Message, Context, RunResult
+        await self.app.close()
+        project=self.root/'project'; project.mkdir()
+        self.telegram=Telegram(); self.codex=Codex(); self.catalog=Catalog(project)
+        async def account(): return 77
+        async def latest(group): return 100
+        async def message(group,identity): return Message(group,identity,'#codex request '+str(identity),topic_id=2)
+        async def context(group,identity,scope,*,upper_bound=None): return Context((await message(group,identity),))
+        self.telegram.self_id=account; self.telegram.latest_message_id=latest
+        self.telegram.message=message; self.telegram.context=context
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        await self.app.handle({'action':'monitor_enable'})
+        for identity in (101,102):
+            await self.app.handle(dict(action='telegram_event',kind='new_message',group_id=10,message_id=identity,
+                account_id=77,sender_id=77,text='#codex request '+str(identity)))
+        normal_run=self.codex.run
+        async def crash(chat,cwd,prompt,**kwargs):
+            await kwargs['on_turn_accepted']('first-turn')
+            self.codex.runs.append((chat,cwd)); raise asyncio.CancelledError()
+        self.codex.run=crash
+        with self.assertRaises(asyncio.CancelledError): await self.app.handle({'action':'dispatch_pending'})
+        before=(await self.app.handle({'action':'monitor_status'}))['requests']
+        self.assertEqual([r['status'] for r in before],['running','pending'])
+        task=await self.app.handle({'action':'status','task_id':before[0]['task_id']})
+        original=(Path(task['folder'])/'context-1.json').read_bytes()
+        await self.app.close()
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        async def observe(chat,cwd,turn): return SimpleNamespace(turn_id=turn,status='completed',result=RunResult('Recovered','First result',turn),reason=None)
+        self.codex.observe_turn=observe; self.codex.run=normal_run
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'finished',result)
+        after=(await self.app.handle({'action':'monitor_status'}))['requests']
+        self.assertEqual([r['status'] for r in after],['finished','pending'])
+        self.assertEqual([r['sequence'] for r in after],[r['sequence'] for r in before])
+        self.assertEqual((Path(task['folder'])/'context-1.json').read_bytes(),original)
+        second=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((second['task_id'],second['chat_id'],second['run']),(task['task_id'],task['chat_id'],2))
+        self.assertEqual(len(self.codex.created),1)
+        self.assertEqual(len(self.codex.runs),2)
