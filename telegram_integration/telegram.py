@@ -25,6 +25,32 @@ class TelethonAdapter:
                 raise Blocked('Activation history resolved a different group')
         return max((message.id for message in result.messages),default=0)
 
+    async def history_page(self, group_id, after, limit):
+        """Oldest available messages after a durable application cursor.
+
+        Mirror Telethon's reverse history offsets in one explicit page RPC so
+        current folder access is checked before every network page.
+        """
+        if type(after) is not int or after<0 or type(limit) is not int or not 1<=limit<=100:
+            raise Blocked('Invalid catch-up history boundary or page size')
+        peer=await self._peer(group_id)
+        result=await self.client(functions.messages.GetHistoryRequest(peer=peer,
+            offset_id=after+1,offset_date=None,add_offset=-limit,limit=limit,
+            max_id=0,min_id=0,hash=0))
+        if not hasattr(result,'messages'):
+            raise Blocked('Telegram catch-up history response has no page')
+        found={}
+        for raw in result.messages:
+            if getattr(raw,'chat_id',None)!=group_id:
+                raise Blocked('Catch-up history resolved a missing or different group message')
+            if raw.id<=after:
+                continue
+            found[raw.id]=dict(kind='history_message',group_id=group_id,message_id=raw.id,
+                sender_id=raw.sender_id,text=raw.raw_text or '',
+                created_at=raw.date.isoformat(),edited=bool(getattr(raw,'edit_date',None)),
+                forwarded=bool(getattr(raw,'fwd_from',None)))
+        return [found[key] for key in sorted(found)]
+
     async def folders(self):
         result = await self.client(functions.messages.GetDialogFiltersRequest())
         return [{'id':f.id,'title':getattr(f.title,'text',str(f.title))}

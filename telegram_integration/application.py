@@ -27,6 +27,8 @@ class Application:
         self.monitor_lock = asyncio.Lock()
         from .monitoring import Monitoring
         self.monitoring = Monitoring(self)
+        from .catchup import Catchup
+        self.catchup = Catchup(self)
         from .outgoing import Outgoing
         self.outgoing = Outgoing(self)
 
@@ -163,6 +165,9 @@ class Application:
         try:
             if action == 'telegram_send_ack':
                 return {'status':'confirmed' if self.outgoing.acknowledge(command['random_id'],command['message_id']) else 'unknown'}
+            if action == 'monitor_catch_up':
+                async with self.monitor_lock:
+                    return await self.catchup.discover(command)
             if action in ('monitor_enable','monitor_refresh','monitor_status','telegram_event'):
                 if action == 'monitor_status':
                     return await self.monitoring.handle(command)
