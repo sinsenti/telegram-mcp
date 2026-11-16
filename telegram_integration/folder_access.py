@@ -1,6 +1,7 @@
 """Durable observed revocation; remote operations already accepted cannot be undone."""
 import json
 from pathlib import Path
+from .contracts import Blocked
 
 class FolderAccess:
     def __init__(self, app):
@@ -10,6 +11,10 @@ class FolderAccess:
     def state(self, group):
         row=self.app.db.execute('SELECT epoch,enabled FROM folder_access WHERE group_id=?',(group,)).fetchone()
         return row if row else (0,1)
+
+    def check_enabled(self, group):
+        if not self.state(group)[1]:
+            raise Blocked('Group access is disabled after observed folder removal')
 
     def preserve_pause(self, task):
         epoch,enabled=self.state(task['group_id'])

@@ -332,3 +332,11 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         async def failed(peer,ids): raise TimeoutError('network unavailable')
         client.get_messages=failed
         with self.assertRaises(TimeoutError): await adapter.message(-1000000000010,42)
+
+    async def test_observed_revocation_blocks_link_content_even_with_stale_folder_membership(self):
+        client=Client(); adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        def revoked(group): raise Blocked('Observed folder removal')
+        adapter.set_access_guard(revoked)
+        with self.assertRaisesRegex(Blocked,'Observed folder removal'):
+            await adapter.resolve_link('https://t.me/c/10/42')

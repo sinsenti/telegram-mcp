@@ -81,6 +81,16 @@ class Outgoing:
         outcomes=[]
         for identity,data in app.db.execute("SELECT outgoing_operations.id,data FROM outgoing_operations JOIN generated_sends USING(id) WHERE status!='confirmed'").fetchall():
             operation=json.loads(data)
+            owner=identity.split(':')
+            if len(owner)>2 and owner[0]=='task':
+                try:
+                    task=app._task(owner[1])
+                except Blocked:
+                    outcomes.append({'operation_id':identity,'status':'blocked','reason':'Task owner is unavailable; inspect before replaying'})
+                    continue
+                if task.get('status')=='paused':
+                    outcomes.append({'operation_id':identity,'status':'paused','reason':'Paused task requires explicit known-result delivery after readiness'})
+                    continue
             try:
                 await self.send(operation['kind'],operation['group_id'],operation['args'],identity)
                 outcomes.append({'operation_id':identity,'status':'confirmed'})
@@ -88,4 +98,4 @@ class Outgoing:
                 outcomes.append({'operation_id':identity,'status':'blocked','reason':str(exc)})
         for identity, in app.db.execute("SELECT id FROM generated_sends WHERE status!='confirmed' AND id NOT IN (SELECT id FROM outgoing_operations)"):
             outcomes.append({'operation_id':identity,'status':'blocked','reason':'Legacy send lacks durable payload and random identity; inspect Telegram manually'})
-        return {'status':'blocked' if any(x['status']=='blocked' for x in outcomes) else 'reconciled','operations':outcomes}
+        return {'status':'blocked' if any(x['status']=='blocked' for x in outcomes) else 'paused' if any(x['status']=='paused' for x in outcomes) else 'reconciled','operations':outcomes}

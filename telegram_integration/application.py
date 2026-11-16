@@ -27,6 +27,8 @@ class Application:
         self.monitor_lock = asyncio.Lock()
         from .folder_access import FolderAccess
         self.folder_access = FolderAccess(self)
+        if hasattr(telegram,'set_access_guard'):
+            telegram.set_access_guard(self.folder_access.check_enabled)
         from .monitoring import Monitoring
         self.monitoring = Monitoring(self)
         from .outgoing import Outgoing

@@ -139,6 +139,9 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
             raise TimeoutError('Codex acknowledgment lost; inspect chat')
         for phase in ('creating_chat','executing'):
             with self.subTest(phase=phase):
+                await self.app.close()
+                self.app=Application(self.root/('db-'+phase),self.root/('tasks-'+phase),self.telegram,self.codex)
+                await self.app.handle({'action':'configure','folder_id':7})
                 self.codex.create_chat=Codex().create_chat
                 self.codex.run=Codex().run
                 if phase=='creating_chat':
