@@ -68,7 +68,7 @@ async def synchronize(app, task):
             await app._access(group)
             reference['status'] = 'uncertain'
             app._save(task)  # Crash/lost acknowledgment cannot blindly duplicate a reference.
-            identity = await app.telegram.create_reference(group, topic, text)
+            identity = await app._send_generated('reference',group,topic,text)
             reference['message_id'] = str(identity)
             app._save(task)
         await app._access(group)

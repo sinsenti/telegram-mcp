@@ -13,6 +13,18 @@ class TelethonAdapter:
         self.client = client
         self.folder_id = None
 
+    async def self_id(self):
+        return (await self.client.get_me()).id
+
+    async def latest_message_id(self, group_id):
+        peer=await self._peer(group_id)
+        result=await self.client(functions.messages.GetHistoryRequest(peer=peer,offset_id=0,offset_date=None,
+            add_offset=0,limit=1,max_id=0,min_id=0,hash=0))
+        for message in result.messages:
+            if getattr(message,'chat_id',None) != group_id:
+                raise Blocked('Activation history resolved a different group')
+        return max((message.id for message in result.messages),default=0)
+
     async def folders(self):
         result = await self.client(functions.messages.GetDialogFiltersRequest())
         return [{'id':f.id,'title':getattr(f.title,'text',str(f.title))}
@@ -257,11 +269,11 @@ class TelethonAdapter:
             offset=next_offset
 
     @staticmethod
-    def _message_id(result):
+    def _message_id(result, random_id=None):
         if isinstance(result,types.UpdateShortSentMessage):
             return str(result.id)
         for update in getattr(result,'updates',[]):
-            if isinstance(update,types.UpdateMessageID):
+            if isinstance(update,types.UpdateMessageID) and update.random_id == random_id:
                 return str(update.id)
         raise Blocked('Telegram send outcome lacks a message identity; inspect source before retrying')
 
@@ -270,19 +282,21 @@ class TelethonAdapter:
         # Explanation is intentionally short; result body goes into the Markdown file.
         if len(text)>4000:
             raise Blocked('Explanation is too long for Telegram; inspect local result')
+        random_id=secrets.randbits(63)
         result=await self.client(functions.messages.SendMessageRequest(peer=peer,message=text,
-            random_id=secrets.randbits(63),reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
-        return self._message_id(result)
+            random_id=random_id,reply_to=None if message_id is None else types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
+        return self._message_id(result,random_id)
 
     async def send_document(self, group_id, message_id, document: Path, topic_id):
         await self._peer(group_id)
         uploaded=await self.client.upload_file(str(document))
         peer=await self._peer(group_id)  # Membership can change during upload.
+        random_id=secrets.randbits(63)
         result=await self.client(functions.messages.SendMediaRequest(peer=peer,
             media=types.InputMediaUploadedDocument(file=uploaded,mime_type='text/markdown',
                 attributes=[types.DocumentAttributeFilename(document.name)]),message='',
-            random_id=secrets.randbits(63),reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
-        return self._message_id(result)
+            random_id=random_id,reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
+        return self._message_id(result,random_id)
 
     async def topic_title(self, group_id, topic_id):
         peer=await self._peer(group_id)
