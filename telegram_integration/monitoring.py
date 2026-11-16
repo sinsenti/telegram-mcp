@@ -100,7 +100,10 @@ class Monitoring:
             known={row[0] for row in app.db.execute('SELECT group_id FROM monitoring_groups')}
             known.update(json.loads(row[0])['group_id'] for row in app.db.execute('SELECT data FROM tasks'))
             for group in known-groups:
-                await app.folder_access.revoke(group)
+                await app.folder_access.revoke(group,interrupt=False)
+            # Gate every removed group before awaiting any remote interruption.
+            for group in known-groups:
+                await app.folder_access.interrupt_group(group)
             for group in groups:
                 app.folder_access.enable(group)
                 row=app.db.execute('SELECT status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
