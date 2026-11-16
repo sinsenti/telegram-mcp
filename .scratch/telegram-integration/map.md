@@ -27,6 +27,8 @@ The user authorized running these controlled Telegram/Codex integration tests wi
 
 - [Ticket 09](./issues/09-queue-requests-with-fixed-context-and-withdrawal.md#answer) is resolved: durable globally serialized queue, current bounded/frozen inputs, withdrawal, restart continuity and conservative unknown-outcome blocking. 93 hermetic tests passed; no additional live turns. [Queue behavior](../../docs/queue.md).
 
+- [Ticket 11](./issues/11-recover-known-task-progress-after-restart.md#answer) is resolved: execution-owned restart reconciliation preserves snapshots, originals, queue identity/order and known completed work; uncertain/paused execution remains observable without blind starts or reports. [Recovery policy](../../docs/known-recovery.md).
+
 ## Fog
 
 - Tickets 10–13 are now unblocked by ticket 09. Ticket 14 (uncertain Telegram reporting) is being implemented independently.

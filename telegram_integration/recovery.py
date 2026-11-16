@@ -119,6 +119,8 @@ class Recovery:
                         raise Blocked(task['terminal_error'])
                     if observation.result.turn_id!=observation.turn_id:
                         raise Blocked('Recovered result has a different turn identity')
+                    # Keep terminal output even when original validation blocks delivery.
+                    app._store_result(task,observation.result)
                     await app._finish_result(task,observation.result,self.inputs(task))
                 elif observation.status in ('interrupted','failed'):
                     task['phase']='terminal_'+observation.status

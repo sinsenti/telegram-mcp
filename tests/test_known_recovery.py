@@ -311,3 +311,31 @@ class KnownRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['tasks'][0]['chat_id'],'chat-actual-123')
         self.assertEqual(len(self.codex.chats),1)
         self.assertEqual(len(self.codex.runs),1)
+
+    async def test_observed_terminal_result_is_retained_when_original_temporarily_changed(self):
+        from types import SimpleNamespace
+        from telegram_integration.contracts import Attachment, Context, Message, RunResult, InputEvidence
+        async def context(group,identity,scope):
+            return Context((Message(group,identity,'Read original',True,2,attachment=Attachment('input','note.txt')),))
+        async def download(group,identity,attachment,stream): stream.write(b'Original code: 739')
+        self.telegram.context=context; self.telegram.download=download
+        saved={}
+        async def lost(chat,cwd,prompt,inputs=(),**kwargs):
+            await kwargs['on_turn_accepted']('changed-input-turn')
+            saved['path']=Path(inputs[0].path)
+            saved['path'].write_bytes(b'Changed locally')
+            saved['result']=RunResult('Read code','Code 739','changed-input-turn',(InputEvidence(inputs[0].input_id,'interpreted','Line 1: code 739'),))
+            self.codex.runs.append((chat,cwd,prompt))
+            raise ConnectionError('completion connection lost')
+        self.codex.run=lost
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        async def observe(chat,cwd,turn): return SimpleNamespace(turn_id=turn,status='completed',result=saved['result'],reason=None)
+        self.codex.observe_turn=observe
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'blocked',result)
+        saved['path'].write_bytes(b'Original code: 739')
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'finished',result)
+        self.assertEqual(len(self.codex.runs),1)
