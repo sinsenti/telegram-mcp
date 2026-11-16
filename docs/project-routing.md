@@ -23,3 +23,7 @@ A concrete additional live test requires authorization before any writes:
 5. If desktop placement does not settle within the agreed bound, record the unresolved evidence and leave ticket 05 needs-info. This plan does not authorize execution; the parent chat will obtain the specific write approval after code review.
 
 No Telegram writes, new live chats, turns, or project changes were performed while implementing ticket 05.
+
+## Completed live acceptance
+
+The [approved live routing test](../.scratch/telegram-integration/routing-live-test.json) passed: one new topic and chat, two marker-only turns in the existing help project, identical chat/task/folder across follow-up, correct source reports and byte-identical downloaded Markdown. Connected desktop listing confirmed the actual chat under the existing help legacy project ID; no move/import was performed. Both completed turns used no tools. Ticket 05 is resolved. Production standalone placement observations remain honestly server-only; this separate live acceptance provides the desktop evidence.

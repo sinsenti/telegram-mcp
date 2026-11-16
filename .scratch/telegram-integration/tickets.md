@@ -37,11 +37,11 @@ Tickets 01 and 02 can start independently. Ticket 01 must establish a supported 
 
 ## Current implementation status
 
-Tickets 01–04 are resolved; stage 1 is complete:
+Tickets 01–05 are resolved; stage 1 and live real-project routing are complete:
 
 - 01: the desktop-origin rename and restoration were observed in both catalog views with stable IDs and directories; see [live evidence](./catalog-refresh-live-test.json).
 - 02: the approved live manual text task completed in one real Codex chat, and its text/Markdown replies were verified in the original Telegram topic, including a byte-for-byte file comparison; see [evidence](./manual-workflow-live-test.json).
 
 Ticket 03 is resolved after successful bounded live reads using the final raw-page adapter. Both message-with-replies and whole-topic scopes, completeness, and private-link identities were verified; see [evidence](./discussion-read-live-test.json).
 
-Ticket 04 is resolved after the approved five-file live test: actual Codex interpretation, unchanged originals, same-chat/folder follow-up, source-specific replies and downloaded Markdown equality all passed. [Evidence](./attachments-live-test.json). All 51 root tests pass. Ticket 05 is implemented and reviewed; 63 root tests pass and the production CLI resolves the existing help destination. Its prepared one-topic/one-chat/two-turn live routing test awaits explicit authorization. Tickets 06–14 remain unimplemented and blocked by the graph above. No additional new chat was created; the attachment test used exactly one follow-up in the existing test chat.
+Ticket 04 is resolved after the approved five-file live test: actual Codex interpretation, unchanged originals, same-chat/folder follow-up, source-specific replies and downloaded Markdown equality all passed. [Evidence](./attachments-live-test.json). All 51 root tests pass. Ticket 05 is resolved after its approved live test verified the new topic/chat, two-turn continuation, source delivery and existing help desktop project placement. [Evidence](./routing-live-test.json). Tickets 06–08 are now unblocked; tickets 06–14 remain unimplemented. No additional new chat was created; the attachment test used exactly one follow-up in the existing test chat.

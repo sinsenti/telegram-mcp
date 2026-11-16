@@ -1,0 +1,122 @@
+{
+  "group_id": -1003989567415,
+  "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+  "cwd": "/home/user/git/personal/help",
+  "outgoing": [
+    {
+      "name": "create_topic",
+      "random_id": 6792724761578702793,
+      "status": "acknowledged",
+      "message_id": 14
+    },
+    {
+      "name": "ROUTING_CHECK_ONE",
+      "random_id": 7537169423149901281,
+      "status": "acknowledged",
+      "message_id": 15
+    },
+    {
+      "name": "ROUTING_CHECK_TWO",
+      "random_id": 6011426042453375695,
+      "status": "acknowledged",
+      "message_id": 18
+    }
+  ],
+  "runs": [
+    {
+      "task_id": "adf97cc4bc1043d294804cf9650af812",
+      "group_id": -1003989567415,
+      "message_id": 15,
+      "scope": "message",
+      "folder": "/home/user/git/personal/telegram-mcp/.local/tasks/adf97cc4bc1043d294804cf9650af812",
+      "chat_id": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+      "status": "finished",
+      "run": 1,
+      "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+      "cwd": "/home/user/git/personal/help",
+      "topic_id": 14,
+      "reason": null,
+      "inputs": [],
+      "phase": "complete",
+      "placement": {
+        "status": "server_verified_desktop_unverified",
+        "observations": [
+          {
+            "chat_id": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+            "cwd": "/home/user/git/personal/help",
+            "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd"
+          }
+        ]
+      },
+      "turn_id": "01a1e473-93a2-7123-a2a1-5aca90999756",
+      "explanation": "Routing test completed; no blockers.",
+      "result_status": "completed",
+      "input_evidence": [],
+      "document": "/home/user/git/personal/telegram-mcp/.local/tasks/adf97cc4bc1043d294804cf9650af812/result-1.md",
+      "report_ids": [
+        "16",
+        "17"
+      ]
+    },
+    {
+      "task_id": "adf97cc4bc1043d294804cf9650af812",
+      "group_id": -1003989567415,
+      "message_id": 18,
+      "scope": "message",
+      "folder": "/home/user/git/personal/telegram-mcp/.local/tasks/adf97cc4bc1043d294804cf9650af812",
+      "chat_id": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+      "status": "finished",
+      "run": 2,
+      "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+      "cwd": "/home/user/git/personal/help",
+      "topic_id": 14,
+      "reason": null,
+      "inputs": [],
+      "phase": "complete",
+      "placement": {
+        "status": "server_verified_desktop_unverified",
+        "observations": [
+          {
+            "chat_id": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+            "cwd": "/home/user/git/personal/help",
+            "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd"
+          }
+        ]
+      },
+      "turn_id": "01a1e473-d740-7ff1-8716-63b3bf897d8d",
+      "explanation": "Routing test completed; no blockers.",
+      "result_status": "completed",
+      "input_evidence": [],
+      "document": "/home/user/git/personal/telegram-mcp/.local/tasks/adf97cc4bc1043d294804cf9650af812/result-2.md",
+      "report_ids": [
+        "19",
+        "20"
+      ]
+    }
+  ],
+  "phase": "verified",
+  "topic_id": 14,
+  "source_message_id": 18,
+  "desktop": {
+    "chat_id": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+    "project_id": "c18094d8-b906-4609-834d-1f4a741fe843",
+    "cwd": "/home/user/git/personal/help",
+    "status": "notLoaded"
+  },
+  "codex_readback": {
+    "threadId": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+    "cwd": "/home/user/git/personal/help",
+    "turns": [
+      {
+        "id": "01a1e473-d740-7ff1-8716-63b3bf897d8d",
+        "status": "completed",
+        "toolActions": 0
+      },
+      {
+        "id": "01a1e473-93a2-7123-a2a1-5aca90999756",
+        "status": "completed",
+        "toolActions": 0
+      }
+    ]
+  }
+}

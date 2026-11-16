@@ -14,6 +14,8 @@ Implementation branch: `integration/telegram-codex`. The approved spec and numbe
 
 - [Ticket 01](./issues/01-discover-existing-codex-projects.md#answer) is resolved after the approved desktop-origin rename and restoration were verified in both catalog views with stable identities and roots. [Evidence](./catalog-refresh-live-test.json).
 
+- [Ticket 05](./issues/05-route-task-topics-into-real-codex-projects.md#answer) is resolved after an approved two-turn live route, same-chat/folder continuation, source-report round trip and actual desktop placement in the existing help project. [Evidence](./routing-live-test.json).
+
 ## Fog
 
-- Ticket 05 routing is implemented and reviewed, with 63 tests passing and production CLI catalog injection verified. The bounded live routing/continuation/desktop-placement test is prepared and awaiting authorization. Tickets 06–14 remain blocked by the graph.
+- Tickets 06 (existing-chat linking), 07 (title/reference synchronization), and 08 (fresh-trigger monitoring) are now unblocked.
