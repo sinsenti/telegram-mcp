@@ -1,38 +1,78 @@
 # Existing Codex project catalog investigation
 
-Verified on 2026-11-16 with installed Codex CLI 0.169.0. Ticket 01 remains unresolved: no supported, refreshable desktop catalog callable by the standalone listener has been established.
+Verified on 2026-11-16 with Codex CLI 0.169.0. A callable, refreshable **experimental** catalog is available through standalone app-server `project/list`. Ticket 01 remains `needs-info` solely for the outstanding real-project-change acceptance check.
 
-## What was verified
+## Corrected identity finding
 
-Two read-only calls to the connected desktop `list_projects({})` tool returned the same 11 saved projects. The known project selected from each response was:
+An earlier investigation inferred that a failed read using a desktop-tool project ID meant the standalone registry was separate. A real `project/list` probe disproved that inference: all 11 saved desktop projects match the standalone catalog exactly by display name and working directory, with no missing or extra projects. The identifiers differ between the desktop tool and the app-server protocol.
 
-| Field | Observed value |
-| --- | --- |
-| projectId | `c18094d8-b906-4609-834d-1f4a741fe843` |
-| label | `help` |
-| projectKind / hostId | `local` / `local` |
-| path | `/home/user/git/personal/help` |
+| Field | Connected desktop tool | Standalone app-server |
+| --- | --- | --- |
+| Project name | `help` | `help` |
+| Project ID | `c18094d8-b906-4609-834d-1f4a741fe843` | `01a1df7d-648f-7942-a075-ae429872b8cd` |
+| Working directory | `/home/user/git/personal/help` | `/home/user/git/personal/help` |
 
-This identity and destination exactly match the [preserved connection test](../../.scratch/telegram-integration/desktop-connection-test-result.json). That test establishes known-directory execution and eventual desktop association; it explicitly records that standalone `project/read` did not recognize this desktop identifier. The connection evidence remains unchanged.
+This is an observed name/path correspondence, not a guaranteed public legacy-ID mapping algorithm. Do not pass desktop-tool identifiers directly to `project/read`, or derive protocol IDs from names. Persist the actual server ID returned by the catalog. Removed projects must be selected again; do not redirect to a same-name replacement silently.
 
-The connected tool can be called again by an assistant in this desktop conversation. Its availability here does not establish a callable transport for an independent Telegram listener. A setup export of its response would be a development snapshot, not ongoing automatic discovery.
+The [preserved connection test](../../.scratch/telegram-integration/desktop-connection-test-result.json) remains unchanged and establishes known-directory execution and eventual desktop placement. Its desktop-ID `project/read` failure is consistent with the different identifier namespaces above; it does not disprove current project discovery.
 
-## Protocol and runtime evidence
+## Supported surface and operational limits
 
-- `codex app-server generate-ts --experimental --out /tmp/telegram-catalog-protocol` exposes `project/list` (`cursor`, `limit`, sorting) and `project/read` (`projectId`). Generated schema proves request shape, not correspondence to desktop projects.
-- The [official app-server protocol documentation](https://learn.chatgpt.com/docs/app-server) describes initialization, experimental opt-in, thread operations and transports. The examined page contains no `project/list` catalog contract for desktop saved projects. Absence from this page does not prove no supported integration exists; it means this investigation has not established one.
-- Read-only inspection of installed `/usr/lib/chatgpt/resources/app.asar`, entry `.vite/build/early-bootstrap-226-2f6bd181558008cf.js`, found `listProjects` paging through `project/list`, and `storeProject` maintaining `legacyProjectIdsByServerId` and `serverProjectsByLegacyId`. The desktop also uses `APP_SERVER_PROJECT_ID_BY_LEGACY_PROJECT_ID_BY_HOST` to look up a server identity before `project/read`. This private implementation distinguishes desktop identity from the raw server identity; it is diagnostic evidence, not a supported adapter contract.
-- `codex app-server proxy --help` offers a control-socket proxy. Neither this help nor the inspected public documentation establishes that its registry has the desktop's saved-project identities and refresh behavior. No control socket was contacted.
-- A fresh standalone read-only probe could not initialize in the current filesystem sandbox: opening `/home/user/.codex/memories_1.sqlite` failed with SQLite code 14. No database/config permission was broadened to hide that limitation. The existing approved test remains the live evidence of registry mismatch.
+The installed CLI generates the `project/list` request/response schema with:
 
-No chats or projects were created/imported, no desktop configuration was changed, and no secrets were read. No project-change test was performed, because desktop project writes are outside this investigation's authorization. Repeated unchanged reads are not evidence of refresh after a project change.
+```sh
+codex app-server generate-ts --experimental --out /tmp/telegram-catalog-protocol
+```
 
-## Reproduction and remaining acceptance
+Inspect `v2/ProjectListParams.ts`, `ProjectListResponse.ts`, `Project.ts`, and `ProjectReadParams.ts`. The project methods are experimental. The [official app-server protocol documentation](https://learn.chatgpt.com/docs/app-server) explains initialization and experimental API opt-in; its examined API overview does not document this project catalog. Therefore this adapter depends on the verified installed CLI protocol, with explicit `capabilities.experimentalApi: true`, and should be revalidated on CLI upgrades. It does not claim a stable cross-version desktop catalog API.
 
-1. From a desktop-connected assistant, call `list_projects({})` and select `help` by returned identifier; compare its path with the preserved connection test above.
-2. Generate the installed experimental protocol bindings using the command above; inspect `v2/ProjectListParams.ts`, `v2/ProjectListResponse.ts`, and `v2/ProjectReadParams.ts`.
-3. Establish a documented or explicitly supported read-only transport callable by a standalone process that returns the actual desktop identity, display name, and working directory. Document how to refresh it and handle removed/renamed projects. Do not parse private global state or scan directories as a substitute.
-4. Under separate explicit authorization, compare that source with connected desktop results before and after a controlled project change, including identifier mapping if needed. A supported naturally occurring update could also supply this evidence.
-5. Only then implement and test a catalog adapter and application consumer, demonstrate selecting this known project's verified destination, and unblock automatic routing.
+Read-only installed runtime inspection additionally found desktop legacy/server identity maps (`legacyProjectIdsByServerId`, `serverProjectsByLegacyId`, and `APP_SERVER_PROJECT_ID_BY_LEGACY_PROJECT_ID_BY_HOST`) in `/usr/lib/chatgpt/resources/app.asar`, `.vite/build/early-bootstrap-226-2f6bd181558008cf.js`. This explains the observed mismatch; production code does not parse the archive, desktop global state, or these private maps.
 
-No production adapter or consumer is added: doing so now would make an unsupported transport or stale setup snapshot appear ready. The remaining blocker is both the supported standalone catalog access contract and evidence of refresh after real project changes. A further read-only API reference or supported desktop bridge could resolve the access question without new project writes.
+The existing control-socket symlink was inspected and `codex app-server proxy` attempted. Its target is absent and the proxy reports ENOENT. No daemon was started or reconfigured. Standalone stdio works and is the adapter's verified transport.
+
+Normal app-server startup requires access to its runtime SQLite databases. The initial sandbox attempt could not open `memories_1.sqlite`; the authorized follow-up used ordinary local runtime access outside that filesystem sandbox. No auth file was read, and desktop configuration was not changed.
+
+## Adapter and consumer
+
+`telegram_integration.catalog.CodexProjectCatalog.refresh()` launches a short-lived `codex app-server --stdio`, opts into the experimental API, and retrieves every catalog page. Each call rereads the source; it keeps no stale setup snapshot. It rejects invalid protocol metadata and repeated pagination cursors, and closes only its own process. Project records carry server identity, display name, and all roots.
+
+`destination(server_project_id)` is the narrow consumer: it refreshes, finds the selected identity, and returns its sole absolute local working directory. Missing identities, malformed data, and multiple/no roots produce a visible `CatalogUnavailable` rather than a guessed destination. Automatic Telegram group-name matching and durable routing are subsequent application work.
+
+Verified real consumer output:
+
+```python
+from telegram_integration.catalog import CodexProjectCatalog
+catalog = CodexProjectCatalog()
+projects = catalog.refresh()  # 11 observed projects
+known = next(project for project in projects if project.name == 'help')
+assert known.id == '01a1df7d-648f-7942-a075-ae429872b8cd'
+assert str(catalog.destination(known.id)) == '/home/user/git/personal/help'
+```
+
+A separate comparison of the connected desktop snapshot against actual adapter results confirmed exact name/path equality for all 11 projects. This checks the source, not arbitrary filesystem scanning. The tests use a subprocess wire fixture to verify paging, updated destinations after a source change, removal, and invalid metadata. They do not establish real desktop propagation after project changes.
+
+Run the contract checks with:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_catalog.py'
+```
+
+## Remaining acceptance gap
+
+No project was changed during this investigation. Repeated unchanged real reads and a fixture mutation do not demonstrate refresh after a real desktop project change, including server-to-desktop propagation. The consumer and experimental source are usable now, but ticket 01 remains unresolved until this check passes.
+
+A concrete reversible test, pending explicit authorization, would temporarily rename existing `help` server project `01a1df7d-648f-7942-a075-ae429872b8cd` to `help catalog refresh check` with `project/update` specifying only `projectId` and `name`, read both the refreshed standalone catalog and connected desktop catalog with bounded reconciliation, and restore the exact original name `help` in a `finally` step. Roots, metadata, project count, and chats would remain unchanged. A naturally occurring user rename could alternatively supply this evidence without an agent project write.
+
+No chats/projects were created or imported, no turns were started, and no live project updates were performed. A connected-tool setup export remains only a development aid and is not used by the production adapter.
+
+The proposed mutating JSON-RPC request (not sent) is:
+
+```json
+{"id":10,"method":"project/update","params":{"projectId":"01a1df7d-648f-7942-a075-ae429872b8cd","name":"help catalog refresh check"}}
+```
+
+The compensating restore request must be issued on every path after the rename attempt, and its readback verified:
+
+```json
+{"id":11,"method":"project/update","params":{"projectId":"01a1df7d-648f-7942-a075-ae429872b8cd","name":"help"}}
+```
