@@ -457,7 +457,7 @@
     "valid_removal": "Parent-authorized Saved Messages non-group sentinel kept folder valid while only allowed group was removed",
     "raw_self_echo": "No Raw UpdateDialogFilter/UpdateDialogFilters self-echo within four seconds; actual membership refetch drove normalized folder_changed observation",
     "terminal_interruption": "Public App link+dispatch saved exact chat/turn identifiers, actual membership removal paused request and acknowledged same-owner interruption; separate authoritative exact-turn readback confirmed interrupted",
-    "fresh_owner_interruption_limit": "Fresh first-turn control is not proven by this receipt; ticket13 is investigating the upstream owner/materialization distinction. Removal still durably gates/pauses and records unresolved interruption when unsupported."
+    "fresh_owner_interruption_limit": "Historical pre-fix race resolved by ticket13 exact turn/started readiness gate; actual fresh-owned control subsequently acknowledged and authoritatively read back interrupted. Cross-process control remains unverified and is never used as fallback."
   },
   "active_resumed_chat": {
     "previous_attempt": {
@@ -743,5 +743,168 @@
     "probe_assertion_correction": "Busy reads/search while execution owner runs initiate no Telegram content operation; Telegram-only probe separately established blocked disabled reads/search.",
     "probe_assertion_error": "AssertionError: ",
     "codex_starts": 1
+  },
+  "main_state_generated_provenance": {
+    "at": "2026-11-16T15:07:58.873536+00:00",
+    "group_id": -1003989567415,
+    "messages": [
+      {
+        "message_id": 41,
+        "evidence": [
+          {
+            "source": "initial actual topic-create receipt",
+            "kind": "test-owned forum topic service message"
+          }
+        ]
+      },
+      {
+        "message_id": 42,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41/state.sqlite",
+            "kind": "confirmed integration-generated readiness"
+          }
+        ]
+      },
+      {
+        "message_id": 43,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41/state.sqlite",
+            "kind": "script-posted synthetic trigger, explicitly identified in live receipt"
+          }
+        ]
+      },
+      {
+        "message_id": 44,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-exclude/state.sqlite",
+            "kind": "confirmed integration-generated readiness"
+          }
+        ]
+      },
+      {
+        "message_id": 45,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-exclude/state.sqlite",
+            "kind": "script-posted synthetic trigger, explicitly identified in live receipt"
+          }
+        ]
+      },
+      {
+        "message_id": 46,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-sentinel/state.sqlite",
+            "kind": "confirmed integration-generated readiness"
+          }
+        ]
+      },
+      {
+        "message_id": 47,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-sentinel/state.sqlite",
+            "kind": "script-posted synthetic trigger, explicitly identified in live receipt"
+          }
+        ]
+      },
+      {
+        "message_id": 48,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-sentinel/state.sqlite",
+            "kind": "confirmed integration-generated readiness"
+          }
+        ]
+      },
+      {
+        "message_id": 49,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-sentinel/state.sqlite",
+            "kind": "script-posted synthetic trigger, explicitly identified in live receipt"
+          }
+        ]
+      },
+      {
+        "message_id": 50,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-active/state.sqlite",
+            "kind": "confirmed integration-generated readiness"
+          }
+        ]
+      },
+      {
+        "message_id": 51,
+        "evidence": [
+          {
+            "source_database": "/home/user/git/personal/telegram-mcp/.local/folder-revocation-41-active/state.sqlite",
+            "kind": "script-posted synthetic trigger, explicitly identified in live receipt"
+          }
+        ]
+      }
+    ],
+    "policy": "Insert only exact generated identities; never advance cutoff or edit human queue/discovery/task state",
+    "status": "registered",
+    "inserted_message_ids": [
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    "verified_message_ids": [
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51
+    ],
+    "main_cutoff_preserved": 32,
+    "human_message_35_generated_flag_unchanged": false,
+    "queue_tasks_discovery_settings_unchanged": true,
+    "additional_verified_fixture": {
+      "message_id": 40,
+      "source": "/home/user/git/personal/telegram-mcp/.scratch/telegram-integration/frozen-report-delivery-live-test.json",
+      "kind": "Actual frozen document upload/replay",
+      "inserted": true,
+      "human35_cutoff_queue_tasks_discovery_settings_unchanged": true
+    }
+  },
+  "fresh_owned_control_verification": {
+    "client_request_id": "df9c7e04-c3d0-40b0-8ba6-0e3d64b2a0b7",
+    "control_attempts": [
+      {
+        "route": "fresh-owner-after-turn-started-event",
+        "acknowledged": true
+      }
+    ],
+    "chat_id": "01a1e4e4-b1a3-72e0-91ad-8674f3dec15d",
+    "turn_id": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+    "actual_started_event_seen": true,
+    "run_reason": "Codex turn 01a1e4e4-b1ec-7230-969b-4ec1a0036b21 interrupted: None",
+    "terminal": {
+      "turn_id": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+      "status": "interrupted",
+      "result": null,
+      "reason": null
+    },
+    "production_fix": "ticket13 commit33a9c16 waits for exact turn/started on owned connection before interrupt"
   }
 }

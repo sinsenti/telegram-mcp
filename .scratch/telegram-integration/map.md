@@ -27,7 +27,7 @@ The user authorized running these controlled Telegram/Codex integration tests wi
 
 - [Ticket 09](./issues/09-queue-requests-with-fixed-context-and-withdrawal.md#answer) is resolved: durable globally serialized queue, current bounded/frozen inputs, withdrawal, restart continuity and conservative unknown-outcome blocking. 93 hermetic tests passed; no additional live turns. [Queue behavior](../../docs/queue.md).
 
-- [Ticket 12](./issues/12-revoke-folder-access-and-pause-task-work.md#answer) is resolved: durable revocation/pause, retained output, fresh re-addition readiness, actual Telegram membership lifecycle and real resumed-chat exact-turn interruption. [Evidence](./folder-revocation-live-test.json). Fresh first-turn interruption remains a ticket-13 capability limit.
+- [Ticket 12](./issues/12-revoke-folder-access-and-pause-task-work.md#answer) is resolved: durable revocation/pause, retained output, fresh re-addition readiness, actual Telegram membership lifecycle and real resumed-chat exact-turn interruption. [Evidence](./folder-revocation-live-test.json). Fresh and resumed owned-turn interruption use ticket 13's exact-start readiness gate; cross-process control is not a fallback.
 
 ## Fog
 

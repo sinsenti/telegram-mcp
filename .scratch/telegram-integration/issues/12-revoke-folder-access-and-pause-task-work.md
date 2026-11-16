@@ -34,6 +34,9 @@ Telegram rejects an empty explicit folder, so the authorized test temporarily us
 Saved Messages as a non-group sentinel, restoring only its and the test group's
 membership components from a fresh folder read. No extra project group became
 allowed. No Raw self-echo appeared within four seconds of the account's own folder
-RPC; membership refetch exercised the normalized observation. Fresh first-turn
-interruption remains the ticket-13 owner/materialization capability limitation;
-this ticket records unresolved control honestly and preserves local revocation.
+RPC; membership refetch exercised the normalized observation. Fresh owned-turn interruption was subsequently verified by ticket 13 after
+waiting for the exact `turn/started` event, with a corresponding production
+readiness gate. Both owned routes are supported; cross-process control remains
+unverified and is never used as fallback. All exact synthetic fixture identities
+were registered in the main generated-message ledger without advancing the
+activation cutoff or changing human/queue/discovery state.

@@ -65,7 +65,15 @@ While the execution owner was still active, read/search returned `busy`, initiat
 no content operation; the Telegram-only disabled test separately returned
 `blocked`. All test clients closed and folder membership/sentinel were restored.
 
-This proves the resumed existing-chat owner route. Fresh first-turn interruption
-has a separate app-server ownership/materialization limitation under ticket 13;
-it is not represented here as proven. Unsupported control remains an explicit
-unresolved interruption, while local access gates and paused progress persist.
+The active Application receipt proves the resumed existing-chat owner route.
+Ticket 13 subsequently verified fresh owned-turn interruption after waiting for
+the exact `turn/started` event and added that readiness gate. Both fresh and resumed
+owned connections support interruption; an acknowledgment still requires terminal
+observation. Cross-process control remains unverified and is never a fallback.
+Historical rejected pre-readiness attempts remain in the receipts.
+
+All exact synthetic Telegram identities from these probes (41–51) were registered
+in the main state's durable generated-message ledger before any listener restart.
+The separately verified frozen-document fixture 40 was registered too. This keeps
+synthetic `#codex` sources from becoming future main-listener work; cutoff 32,
+human message 35, queue, task and discovery state were preserved.
