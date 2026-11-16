@@ -20,7 +20,7 @@ async def deliver(application, event, account_id, kind='new_message'):
         'edited':bool(getattr(message,'edit_date',None)),
         'forwarded':bool(getattr(message,'fwd_from',None))})
 
-async def listen(application, client, *, sync_references=False):
+async def listen(application, client, *, sync_references=True):
     account=await application.telegram.self_id()
     ready=asyncio.Event()
     async def receive(event):
@@ -98,7 +98,8 @@ def main():
     parser=argparse.ArgumentParser(description='Enable local Telegram monitoring and execute fresh #codex requests')
     parser.add_argument('--state-directory',default='.local')
     parser.add_argument('--folder-id',type=int,help='Explicitly select the Telegram folder on initial setup')
-    parser.add_argument('--sync-references',action='store_true',help='Periodically update linked topic titles and pinned references')
+    parser.add_argument('--sync-references',action='store_true',default=True,help=argparse.SUPPRESS)
+    parser.add_argument('--no-sync-references',dest='sync_references',action='store_false',help='Disable periodic topic title and reference polling')
     args=parser.parse_args()
     try: asyncio.run(run(args))
     except (ValueError,OSError,KeyError) as error: parser.exit(1,str(error)+'\n')

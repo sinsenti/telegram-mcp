@@ -45,7 +45,7 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
         result=await self.sync(task)
         self.assertEqual(self.topic,'Desktop title')
         self.assertEqual(result['reference_sync']['pin']['status'],'current')
-        self.assertEqual(self.writes,['create','pin','rename','edit'])
+        self.assertEqual(self.writes,['create','pin','edit','rename','edit'])
         self.assertEqual(result['chat_id'],task['chat_id'])
         self.assertEqual(len(self.codex.created),1)
         self.assertEqual(self.references['80'],'Project: help\nChat: Desktop title\nStatus: finished\nCodex: codex://threads/actual-chat\nChat ID: actual-chat')
@@ -54,6 +54,7 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
         task=await self.task()
         self.title='🛰' * 40
         async def denied(*args): raise PermissionError('pin denied')
+        self.pinned=False
         self.telegram.pin_reference=denied
         result=await self.sync(task)
         self.assertEqual(self.topic,'🛰' * 32)
@@ -65,6 +66,7 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_removal_between_operations_blocks_reference_after_successful_rename(self):
         task=await self.task()
+        original=dict(self.references)
         self.title='Renamed'
         async def rename(*args):
             self.topic='Renamed'
@@ -72,16 +74,16 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
             self.telegram.allowed_groups=removed
         self.telegram.rename_topic=rename
         result=await self.sync(task)
-        self.assertEqual(self.references,{})
+        self.assertEqual(self.references,original)
         self.assertEqual(result['status'],'paused')
         self.assertIn('disabled',result['reference_sync']['reference']['reason'])
 
     async def test_uncertain_create_is_not_duplicated_after_restart(self):
-        task=await self.task()
         async def lost(*args):
             self.writes.append('uncertain create')
             raise TimeoutError('lost acknowledgement')
         self.telegram.create_reference=lost
+        task=await self.task()
         result=await self.sync(task)
         self.assertEqual(result['reference_sync']['reference']['status'],'uncertain')
         await self.app.close()
@@ -129,7 +131,7 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.topic,'Canonical name')
 
     async def test_lost_reference_create_ack_replays_same_identity_after_restart(self):
-        task=await self.task(); identities={}; lose=True
+        identities={}; lose=True
         async def create(group, topic, text, *, random_id=None):
             nonlocal lose
             identities.setdefault(random_id,'80')
@@ -139,7 +141,18 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
                 raise TimeoutError('remote success; lost create acknowledgment')
             return identities[random_id]
         self.telegram.create_reference=create
-        first=await self.sync(task)
+        # The first lifecycle attempt loses its ACK. Avoid the completion retry
+        # until reconstruction by leaving the original adapter unavailable.
+        original_run=self.codex.run
+        async def run(*args,**kwargs):
+            nonlocal lose
+            result=await original_run(*args,**kwargs)
+            lose=True
+            return result
+        self.codex.run=run
+        task=await self.task()
+        first=task
+        lose=False
         self.assertEqual(first['reference_sync']['reference']['status'],'uncertain')
         await self.app.close()
         from telegram_integration.application import Application
@@ -177,4 +190,67 @@ class ReferenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['reference_sync']['title']['status'],'current')
         self.assertEqual(result['reference_sync']['reference']['status'],'current')
         self.assertEqual(result['reference_sync']['pin']['status'],'current')
-        self.assertEqual(self.writes,['create','pin','rename','edit','pin'])
+        self.assertEqual(self.writes,['create','pin','edit','rename','edit','pin'])
+
+class ReferenceLifecycleTests(unittest.IsolatedAsyncioTestCase):
+    asyncSetUp = ReferenceTests.asyncSetUp
+    asyncTearDown = ReferenceTests.asyncTearDown
+    task = ReferenceTests.task
+    async def test_running_reference_is_automatic_and_sync_does_not_own_execution(self):
+        import asyncio
+        from telegram_integration.contracts import RunResult
+        started=asyncio.Event(); finish=asyncio.Event(); closed=[]
+        async def run(*args,**kwargs):
+            started.set(); await finish.wait(); return RunResult('Done','Hello','turn')
+        async def close(): closed.append(True)
+        self.codex.run=run; self.codex.aclose=close
+        self.title='Active task'
+        worker=asyncio.create_task(self.task())
+        try:
+            await asyncio.wait_for(started.wait(),2)
+            self.assertTrue(self.pinned)
+            self.assertIn('Status: running',self.references['80'])
+            self.title='Desktop renamed during execution'
+            result=await asyncio.wait_for(self.app.handle({'action':'sync_references'}),2)
+            self.assertEqual(result['status'],'synchronized')
+            self.assertEqual(self.topic,'Desktop renamed during execution')
+            self.assertEqual(closed,[])
+        finally:
+            finish.set(); task=await worker
+        self.assertEqual(task['status'],'finished')
+        self.assertIn('Status: finished',self.references['80'])
+        self.assertEqual(self.writes.count('create'),1)
+        self.assertEqual((await self.app.handle({'action':'status','task_id':task['task_id']}))['phase'],'complete')
+
+    async def test_ordinary_listener_creates_running_and_finished_pin_without_flags(self):
+        import asyncio
+        from telegram_integration.listener import listen
+        from telegram_integration.contracts import Message, RunResult
+        started=asyncio.Event(); finish=asyncio.Event()
+        async def self_id(): return 77
+        async def latest(group): return 100
+        async def send(group,source,text,topic): return '100' if source is None else '201'
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        async def run(*args,**kwargs):
+            started.set(); await finish.wait(); return RunResult('Done','Hello','turn')
+        self.telegram.self_id=self_id; self.telegram.latest_message_id=latest
+        self.telegram.send_text=send; self.telegram.message=message; self.codex.run=run
+        application=self.app; case=self
+        class Client:
+            def add_event_handler(self,*args): pass
+            def remove_event_handler(self,*args): pass
+            async def catch_up(self):
+                await application.handle(dict(action='telegram_event',kind='new_message',group_id=10,
+                    message_id=101,sender_id=77,account_id=77,text='#codex greeting'))
+            async def run_until_disconnected(self):
+                try:
+                    await asyncio.wait_for(started.wait(),2)
+                    case.assertTrue(case.pinned)
+                    case.assertIn('Status: running',case.references['80'])
+                finally:
+                    finish.set()
+                async with asyncio.timeout(3):
+                    while 'Status: finished' not in case.references['80']:
+                        await asyncio.sleep(0.01)
+        await listen(self.app,Client())
+        self.assertEqual(self.writes.count('create'),1)

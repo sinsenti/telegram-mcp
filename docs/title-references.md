@@ -1,6 +1,6 @@
 # Topic names and chat references
 
-`Application.handle({"action":"sync_reference","task_id":"…"})` reconciles a known project task's topic. `sync_references` refreshes every linked topic; the listener can call it periodically and after completion. Each invocation performs one bounded metadata observation. Repeated listener polls catch later desktop changes without starting or resuming Codex turns. Explicit calls also work after reopening the local database.
+`Application.handle({"action":"sync_reference","task_id":"…"})` reconciles a known project task's topic. `sync_references` refreshes every linked topic; the listener calls it every 30 seconds by default. New chat/link and running/completion transitions also reconcile references. Each invocation performs one bounded metadata observation. Repeated listener polls catch later desktop changes without starting or resuming Codex turns. Explicit calls also work after reopening the local database.
 
 Codex `thread/read` with `includeTurns:false` supplies the canonical `Thread.name`. A missing name leaves `Title pending` and keeps the existing topic title. The previous known name survives a missing value or observation failure. The integration does not substitute prompt previews, rename Codex chats, create replacement chats, or alter stable project/chat/topic routing identities. Topic names are truncated at a Unicode code point boundary to 128 UTF-8 bytes. The complete title is retained in the reference.
 
@@ -8,7 +8,7 @@ The reference includes the current catalog project name, full chat title, task s
 
 `status` exposes durable `reference_sync.observation`, `title`, `reference`, and `pin` outcomes independently of task execution. Telegram title readback, reference content, and the known message's pinned flag confirm writes. Access is refreshed before every operation; removal from the selected folder stops subsequent operations. Only the remembered connector reference may be edited or pinned. No unrelated messages are unpinned.
 
-A failed rename or pin leaves the completed task intact and reports its own reason. Known message edits and pins reconcile against external readback on the next sync. Reference creation is recorded as uncertain before sending: a lost acknowledgment without a saved message ID requires inspection and is never blindly retried. This conservative hold is an integration point for ticket 14's outgoing-effect reconciliation. A missing/deleted or inaccessible saved reference is reported for inspection; the connector does not silently create another pin.
+A failed rename or pin leaves the completed task intact and reports its own reason. Known message edits and pins reconcile against external readback on the next sync. Reference creation is recorded as uncertain before sending: a lost acknowledgment without a saved message ID requires inspection and is never blindly retried. Stable outgoing identities reconcile lost acknowledgments through the outgoing journal; legacy outcomes without an identity remain blocked for inspection. A missing/deleted or inaccessible saved reference is reported for inspection; the connector does not silently create another pin.
 
 ## Remaining live acceptance
 
