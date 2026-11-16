@@ -92,7 +92,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
             return result
         self.codex.run = revoke
         result = await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
-        self.assertEqual(result['status'],'blocked')
+        self.assertEqual(result['status'],'paused')
         self.assertTrue(Path(result['document']).exists())
         self.assertEqual(self.telegram.reports,[])
 
@@ -113,7 +113,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
             return result
         self.telegram.send_text = revoke
         result = await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
-        self.assertEqual(result['status'],'blocked')
+        self.assertEqual(result['status'],'paused')
         self.assertEqual(result['report_ids'],['500'])
         self.assertEqual(len(self.telegram.reports),1)
 

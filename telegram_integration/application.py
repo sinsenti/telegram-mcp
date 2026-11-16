@@ -25,6 +25,8 @@ class Application:
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
         self.monitor_lock = asyncio.Lock()
+        from .folder_access import FolderAccess
+        self.folder_access = FolderAccess(self)
         from .monitoring import Monitoring
         self.monitoring = Monitoring(self)
         from .outgoing import Outgoing
@@ -37,6 +39,7 @@ class Application:
             self.db.close()
 
     def _save(self, task):
+        self.folder_access.preserve_pause(task)
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO tasks VALUES (?, ?)', (task['task_id'], json.dumps(task)))
 
@@ -50,8 +53,18 @@ class Application:
         row = self.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
         if row is None:
             raise Blocked('Select a Telegram folder before reading or running tasks')
+        if not self.folder_access.state(group_id)[1]:
+            raise Blocked('Group access is disabled after folder removal')
         if group_id not in await self.telegram.allowed_groups(int(row[0])):
+            await self.folder_access.revoke(group_id)
             raise Blocked('Group is outside the selected Telegram folder')
+        if not self.folder_access.state(group_id)[1]:
+            raise Blocked('Group access was revoked during access validation')
+
+    async def _task_access(self, task):
+        await self._access(task['group_id'])
+        if task.get('access_epoch',0) != self.folder_access.state(task['group_id'])[0]:
+            raise Blocked('Task is paused after folder removal; a fresh request is required')
 
     async def _read(self, group_id, message_id):
         await self._access(group_id)
@@ -163,7 +176,7 @@ class Application:
         try:
             if action == 'telegram_send_ack':
                 return {'status':'confirmed' if self.outgoing.acknowledge(command['random_id'],command['message_id']) else 'unknown'}
-            if action in ('monitor_enable','monitor_refresh','monitor_status','telegram_event'):
+            if action in ('monitor_enable','monitor_refresh','folder_changed','monitor_status','telegram_event'):
                 if action == 'monitor_status':
                     return await self.monitoring.handle(command)
                 async with self.monitor_lock:
@@ -206,16 +219,19 @@ class Application:
             raise Blocked('Completed report document changed; original payload is required')
 
     async def _deliver_reports(self, task):
+        await self._task_access(task)
         if not task.get('reporting_version') and len(task.get('report_ids',[]))<2:
             raise Blocked('Legacy task reporting lacks durable operation identity; inspect Telegram manually')
         if len(task.get('report_ids',[]))<2:
             self._verify_report_document(task)
         prefix=f"task:{task['task_id']}:run:{task['run']}"
         if not task.get('report_ids'):
+            await self._task_access(task)
             task['report_ids']=[await self._send_generated('text',task['group_id'],task['message_id'],task['explanation'],task['topic_id'],operation_key=prefix+':text')]
             self._save(task)
             self._verify_report_document(task)
         if len(task['report_ids'])<2:
+            await self._task_access(task)
             self._verify_report_document(task)
             task['report_ids'].append(await self._send_generated('document',task['group_id'],task['message_id'],Path(task['document']),task['topic_id'],operation_key=prefix+':document',document_sha256=task['document_sha256']))
             self._verify_report_document(task)
@@ -433,11 +449,12 @@ class Application:
         task['document_sha256'] = digest(document)
         task['reporting_version'] = 1
         self._save(task)
-        await self._deliver_reports(task)
+        if task.get('status') != 'paused':
+            await self._deliver_reports(task)
 
     async def _start_captured(self, task, text, inputs):
         """Initiate each external operation only after its durable intent exists."""
-        await self._access(task['group_id'])
+        await self._task_access(task)
         if task['chat_id'] is None:
             if task.get('codex_create_intent'):
                 raise Blocked('Codex chat creation outcome is unresolved; no replacement chat is safe')
@@ -446,7 +463,7 @@ class Application:
             task['chat_id'] = (await self.codex.create_chat(Path(task['cwd']),project_id=task['project_id'])
                                if task.get('project_id') else await self.codex.create_chat(Path(task['folder'])))
             self._save(task)
-        await self._access(task['group_id'])
+        await self._task_access(task)
         if task.get('client_request_id'):
             raise Blocked('Codex turn start outcome needs reconciliation before another turn can start')
         task.update(phase='executing',client_request_id=str(uuid.uuid4()))
@@ -484,6 +501,10 @@ class Application:
             if task.get('phase') not in ('reporting','complete') or not task.get('document'):
                 raise Blocked('Task has no completed result awaiting reporting')
             try:
+                await self._access(task['group_id'])
+                # Explicit delivery reconciliation may release a known result
+                # after readiness; it never starts or resumes Codex work.
+                task['access_epoch']=self.folder_access.state(task['group_id'])[0]
                 await self._deliver_reports(task)
                 self.monitoring.update_matching_delivery_outcome(task)
                 return task
@@ -563,7 +584,8 @@ class Application:
                           and task.get('phase') in ('capturing_inputs','terminal_result')
                           and not task.get('report_blocker')
                           and task.get('placement',{}).get('status') != 'unresolved')
-            if task['status'] not in ('finished','linked') and not can_continue:
+            paused_continuation=(task['status']=='paused' and task.get('chat_id') and task.get('phase') in ('terminal_result','reporting','complete'))
+            if task['status'] not in ('finished','linked') and not can_continue and not paused_continuation:
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
             if 'group_id' in c and int(c['group_id']) != task['group_id']:
@@ -599,6 +621,7 @@ class Application:
             raise Blocked('Selected message has no task text')
         folder = Path(task['folder'])
         owned_directory(folder)
+        task['access_epoch']=self.folder_access.state(task['group_id'])[0]
         task['run'] += 1
         (folder/f"input-{task['run']}.txt").write_text(text)
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
@@ -647,6 +670,7 @@ class Application:
                         'media_id':attachment.media_id,'original_name':attachment.original_name,'mime_type':attachment.mime_type,
                         'path':str(destination),'family':kind,'explicitly_unnecessary':excluded}
                 try:
+                    await self._task_access(task)
                     await self._access(item.group_id)
                     descriptor=os.open(destination,os.O_WRONLY|os.O_CREAT|os.O_EXCL|os.O_NOFOLLOW,0o600)
                     with os.fdopen(descriptor,'wb') as stream:
@@ -684,7 +708,7 @@ class Application:
             task.update(status='blocked', reason=str(exc))
             if task.get('phase') != 'reporting':
                 try:
-                    await self._access(task['group_id'])
+                    await self._task_access(task)
                     task['blocker_report_id'] = await self._send_generated('text',task['group_id'], task['message_id'], 'Blocked: '+str(exc), task['topic_id'])
                 except Exception as report_exc:
                     task['report_blocker'] = str(report_exc)

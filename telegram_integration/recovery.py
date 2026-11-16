@@ -81,6 +81,8 @@ class Recovery:
                 return await app._handle({'action':'reconcile_reports','task_id':task['task_id']})
             await app._access(task['group_id'])
             if phase == 'captured':
+                if app.monitoring.has_unfinished_execution():
+                    raise Blocked('Another external execution remains unresolved; captured work is retained')
                 if task.get('codex_create_intent') or task.get('client_request_id'):
                     raise Blocked('Captured work has an external intent; reconcile it before continuing')
                 text=self.snapshot(task); inputs=self.inputs(task)
@@ -133,9 +135,11 @@ class Recovery:
         app.monitoring.recover_unbound()
         tasks=[app._task(task_id)] if task_id else [json.loads(row[0]) for row in app.db.execute('SELECT data FROM tasks ORDER BY rowid')]
         outcomes=[]
+        # Reconcile external intents before admitting captured work to execution.
+        tasks.sort(key=lambda task: task.get('phase') not in ('creating_chat','executing'))
         for task in tasks:
             if task.get('phase') is None or task.get('status')=='linked': continue
             outcome=await self.one(task)
             app.monitoring.record_recovery_outcome(outcome)
             outcomes.append(outcome)
-        return {'status':'blocked' if any(t['status']=='blocked' for t in outcomes) else 'recovered','tasks':outcomes}
+        return {'status':'blocked' if any(t['status'] in ('blocked','paused') for t in outcomes) else 'recovered','tasks':outcomes}

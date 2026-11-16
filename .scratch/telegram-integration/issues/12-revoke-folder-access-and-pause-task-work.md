@@ -4,7 +4,7 @@
 
 **Blocked by:** 09: Queue requests with fixed context and withdrawal.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Apply observed folder removal to every newly initiated read/write, including result uploads, renames, and pin updates; do not send a removal reply into that group.
 - [ ] Pause queued requests and request active-turn interruption without promising instantaneous retraction of already accepted remote work.
