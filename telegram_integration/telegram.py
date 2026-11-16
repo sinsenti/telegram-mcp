@@ -2,9 +2,11 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import secrets
+from urllib.parse import urlparse, parse_qs
+from dataclasses import replace
 from telethon import utils
 from telethon.tl import functions, types
-from .contracts import Blocked, Message
+from .contracts import Blocked, Context, Message
 
 class TelethonAdapter:
     def __init__(self, client):
@@ -64,10 +66,57 @@ class TelethonAdapter:
     async def message(self, group_id, message_id):
         peer=await self._peer(group_id)
         message=await self.client.get_messages(peer,ids=message_id)
+        if message_id == 1 and (message is None or not getattr(message,'reply_to',None)):
+            entity=await self.client.get_entity(peer)
+            if getattr(entity,'forum',False):
+                return Message(group_id,1,'',topic_id=1,is_topic_root=True)
         if message is None:
             raise Blocked('Selected Telegram message is missing or inaccessible')
         if message.chat_id != group_id:
             raise Blocked('Selected message belongs to a different group')
+        selected=self._normalize(message)
+        if selected.topic_id is None:
+            peer=await self._peer(group_id)
+            entity=await self.client.get_entity(peer)
+            if getattr(entity,'forum',False):
+                selected=replace(selected,topic_id=1)
+        return selected
+
+    async def resolve_link(self, link):
+        parsed=urlparse(link)
+        query=parse_qs(parsed.query,keep_blank_values=True)
+        if parsed.scheme not in ('https','http') or parsed.netloc not in ('t.me','telegram.me') or parsed.fragment:
+            raise Blocked('Unsupported Telegram message/topic link')
+        if set(query)-{'thread','single'} or any(len(values)!=1 for values in query.values()):
+            raise Blocked('Unsupported or ambiguous Telegram link parameters; comment redirects are not supported')
+        parts=parsed.path.strip('/').split('/')
+        private=parts[0]=='c'
+        if private:
+            if len(parts) not in (3,4) or not parts[1].isdigit() or int(parts[1]) <= 0:
+                raise Blocked('Invalid private Telegram link')
+            group=utils.get_peer_id(types.PeerChannel(int(parts[1])))
+            numbers=parts[2:]
+        else:
+            if len(parts) not in (2,3) or not parts[0] or not all(ch.isalnum() or ch=='_' for ch in parts[0]):
+                raise Blocked('Invalid public Telegram link')
+            peer=await self.client.get_input_entity(parts[0])
+            group=utils.get_peer_id(peer)
+            numbers=parts[1:]
+        if any(not value.isdigit() or int(value)<=0 for value in numbers):
+            raise Blocked('Invalid Telegram message/topic identity')
+        thread=int(numbers[0]) if len(numbers)==2 else None
+        if 'thread' in query:
+            value=query['thread'][0]
+            if not value.isdigit() or int(value)<=0 or thread not in (None,int(value)):
+                raise Blocked('Inconsistent Telegram thread identity')
+            thread=int(value)
+        selected=await self.message(group,int(numbers[-1]))
+        if thread is not None and selected.topic_id != thread:
+            raise Blocked('Telegram link thread differs from the actual message topic')
+        return selected
+
+    @staticmethod
+    def _normalize(message):
         header=message.reply_to
         topic_id=None
         if header and getattr(header,'forum_topic',False):
@@ -79,7 +128,84 @@ class TelethonAdapter:
         # (including unsupported types) must still block this text-only slice.
         has_attachment = message.media is not None and not isinstance(
             message.media, (types.MessageMediaWebPage, types.MessageMediaEmpty))
-        return Message(message.chat_id,message.id,message.raw_text or '',has_attachment,topic_id)
+        return Message(message.chat_id,message.id,message.raw_text or '',has_attachment,topic_id,
+                       getattr(header,'reply_to_msg_id',None),isinstance(message.action,types.MessageActionTopicCreate))
+
+    async def context(self, group_id, message_id, scope):
+        if scope not in ('message','topic'):
+            raise Blocked('Selection scope must be message or topic')
+        selected=await self.message(group_id,message_id)
+        topic=selected.topic_id
+        general=topic == 1
+        if topic is None and scope == 'topic':
+            peer=await self._peer(group_id)
+            entity=await self.client.get_entity(peer)
+            if not getattr(entity,'forum',False):
+                raise Blocked('Whole-topic selection requires a Telegram forum topic')
+            topic=1
+            general=True
+        candidates={selected.message_id:selected}
+        if topic is not None and not general:
+            root=await self.message(group_id,topic)
+            candidates[root.message_id]=root
+        # Explicit page RPCs revalidate access before every remote fetch, without
+        # refetching the complete folder and dialog list for each buffered item.
+        async for raw in self._history(group_id,None if general else topic or selected.message_id):
+            item=self._normalize(raw)
+            if general:
+                if item.topic_id not in (None,1):
+                    continue
+            elif topic and item.topic_id != topic and item.message_id != topic:
+                raise Blocked('History returned a message outside the selected topic')
+            candidates.setdefault(item.message_id,item)
+        ordered=sorted(candidates.values(),key=lambda item:item.message_id)
+        if scope == 'topic':
+            return Context(tuple(ordered))
+        included={selected.message_id}
+        for item in ordered:
+            if item.reply_to_id in included:
+                included.add(item.message_id)
+        # A missing intermediate parent can hide a descendant. Expose the gap;
+        # execution must never assume that such a subset is the whole discussion.
+        missing={item.reply_to_id for item in ordered if item.reply_to_id and
+                 item.reply_to_id not in candidates and item.reply_to_id != topic and
+                 item.message_id > selected.message_id}
+        return Context(tuple(item for item in ordered if item.message_id in included),not missing,
+                       'Reply ancestry is missing; descendants cannot be classified completely' if missing else None)
+
+    async def search(self, group_id, query):
+        found={}
+        async for raw in self._history(group_id,query=query):
+            item=self._normalize(raw)
+            found[item.message_id]=item
+        return tuple(found[key] for key in sorted(found))
+
+    async def _history(self, group_id, reply_to=None, query=None):
+        offset=0
+        while True:
+            peer=await self._peer(group_id)
+            arguments=dict(peer=peer,offset_id=offset,offset_date=None,add_offset=0,limit=100,max_id=0,min_id=0,hash=0)
+            if query is not None:
+                arguments.pop('offset_date')
+                request=functions.messages.SearchRequest(q=query,filter=types.InputMessagesFilterEmpty(),
+                    min_date=None,max_date=None,**arguments)
+            elif reply_to is not None:
+                request=functions.messages.GetRepliesRequest(msg_id=reply_to,**arguments)
+            else:
+                request=functions.messages.GetHistoryRequest(**arguments)
+            result=await self.client(request)
+            if not hasattr(result,'messages'):
+                raise Blocked('Telegram history response has no complete page')
+            if not result.messages:
+                return
+            next_offset=min(item.id for item in result.messages)
+            if next_offset <= 0 or offset and next_offset >= offset:
+                raise Blocked('Telegram history pagination did not advance')
+            for raw in result.messages:
+                if getattr(raw,'chat_id',None) != group_id:
+                    raise Blocked('History contains a missing message or a different destination')
+                yield raw
+            offset=next_offset
 
     @staticmethod
     def _message_id(result):

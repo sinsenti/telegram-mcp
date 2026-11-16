@@ -14,6 +14,9 @@ class Telegram:
     async def message(self, group_id, message_id):
         self.reads.append((group_id, message_id))
         return Message(group_id, message_id, 'Write a greeting')
+    async def context(self, group_id, message_id, scope):
+        from telegram_integration.contracts import Context
+        return Context((await self.message(group_id, message_id),))
     async def send_text(self, group_id, message_id, explanation, topic_id):
         self.reports.append((group_id, message_id, explanation))
         return '500'

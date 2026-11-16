@@ -12,6 +12,14 @@ class Message:
     text: str
     has_attachment: bool = False
     topic_id: int | None = None
+    reply_to_id: int | None = None
+    is_topic_root: bool = False
+
+@dataclass(frozen=True)
+class Context:
+    messages: tuple[Message, ...]
+    complete: bool = True
+    reason: str | None = None
 
 @dataclass(frozen=True)
 class RunResult:
@@ -22,6 +30,9 @@ class RunResult:
 class TelegramAdapter(Protocol):
     async def allowed_groups(self, folder_id: int) -> set[int]: ...
     async def message(self, group_id: int, message_id: int) -> Message: ...
+    async def context(self, group_id: int, message_id: int, scope: str) -> Context: ...
+    async def resolve_link(self, link: str) -> Message: ...
+    async def search(self, group_id: int, query: str) -> tuple[Message, ...]: ...
     async def send_text(self, group_id: int, message_id: int, text: str, topic_id: int | None) -> str: ...
     async def send_document(self, group_id: int, message_id: int, document: Path, topic_id: int | None) -> str: ...
 
