@@ -629,7 +629,7 @@ class Application:
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         # These fields describe only the current run. Earlier artifacts remain on disk.
         for key in ('codex_create_intent','client_request_id','turn_id','input_evidence','result_status','explanation','document',
-                    'report_ids','blocker_report_id','report_blocker','document_sha256'):
+                    'report_ids','blocker_report_id','report_blocker','document_sha256','snapshot_sha256','terminal_error'):
             task.pop(key,None)
         task.update(status='running', reason=None, topic_id=m.topic_id)
         self._save(task)
