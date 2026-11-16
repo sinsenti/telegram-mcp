@@ -98,6 +98,7 @@ class CodexAppServer:
         try:
             await connection.request('initialize', {
                 'clientInfo': {'name': 'telegram-task-integration', 'version': '0.1.0'},
+                'capabilities': {'experimentalApi': True},
             })
             await connection.send({'method': 'initialized'})
             yield connection
@@ -110,19 +111,28 @@ class CodexAppServer:
                     process.kill()
                     await process.wait()
 
-    async def create_chat(self, cwd: Path) -> str:
+    async def create_chat(self, cwd: Path, project_id: str | None = None) -> str:
         # New threads have no resumable rollout until their first turn. Keep the
         # owning server alive while the caller persists the returned chat ID.
         context = self._connect(cwd)
         connection = await context.__aenter__()
         try:
-            result = await connection.request('thread/start', {'cwd': str(cwd)})
+            params = {'cwd': str(cwd)}
+            if project_id is not None:
+                params['projectId'] = project_id
+            result = await connection.request('thread/start', params)
             chat_id = result['thread']['id']
             self._pending[chat_id] = (context, connection)
             return chat_id
         except BaseException:
             await context.__aexit__(None, None, None)
             raise
+
+    async def observe_chat(self, chat_id: str, cwd: Path) -> dict:
+        async with self._connect(cwd) as connection:
+            result = await connection.request('thread/read', {'threadId':chat_id,'includeTurns':False})
+            thread=result['thread']
+            return {'chat_id':thread['id'],'cwd':thread['cwd'],'project_id':thread.get('projectId')}
 
     @asynccontextmanager
     async def _chat_connection(self, chat_id, cwd):
