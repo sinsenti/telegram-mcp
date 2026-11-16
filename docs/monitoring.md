@@ -1,6 +1,6 @@
 # Fresh-request monitoring
 
-The local listener and manual transport call the same `Application.handle` boundary. Use one application process per state directory. The listener prevents a second listener from owning its state directory; do not run a separate manual CLI/MCP application against that database while it runs. In-process manual execution returns `busy` while the automatic worker owns execution. Admission and observable status remain available during a Codex turn, and only the execution owner closes its Codex connections.
+The local listener and manual transport call the same `Application.handle` boundary. The listener prevents a second listener from owning its state directory. A shared OS execution lock also makes manual CLI/MCP applications and other workers using the same state database return `busy` while execution is active. See [the durable queue](queue.md) for snapshot, withdrawal and unresolved-execution behavior. Admission and observable status remain available during a Codex turn, and only the execution owner closes its Codex connections.
 
 After connecting the existing Telegram account and selecting the intended folder, the runnable entry point is:
 

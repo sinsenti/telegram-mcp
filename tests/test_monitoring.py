@@ -49,7 +49,7 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
     async def test_admission_and_status_do_not_wait_for_worker_or_close_its_connection(self):
         from telegram_integration.contracts import Message, Context, RunResult
         async def message(group, identity): return Message(group,identity,'#codex greet',topic_id=2)
-        async def context(group, identity, scope): return Context((await message(group,identity),Message(group,identity+100,'later instruction',topic_id=2)))
+        async def context(group, identity, scope, *, upper_bound=None): return Context((await message(group,identity),)) if upper_bound is not None else Context((await message(group,identity),Message(group,identity+100,'later instruction',topic_id=2)))
         self.telegram.message=message; self.telegram.context=context
         started=asyncio.Event(); finish=asyncio.Event(); prompts=[]; closed=[]
         async def run(chat,cwd,prompt,**kwargs):
@@ -72,7 +72,7 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
     async def test_successful_report_releases_held_human_request_without_self_trigger(self):
         from telegram_integration.contracts import Message, Context, RunResult
         async def message(group, identity): return Message(group,identity,'#codex greet',topic_id=2)
-        async def context(group, identity, scope): return Context((await message(group,identity),))
+        async def context(group, identity, scope, *, upper_bound=None): return Context((await message(group,identity),))
         self.telegram.message=message; self.telegram.context=context
         turn_started=asyncio.Event(); finish_turn=asyncio.Event()
         send_started=asyncio.Event(); finish_send=asyncio.Event(); closed=[]
@@ -199,3 +199,142 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.event(102))['status'],'duplicate')
         self.assertEqual(result['reference_sync']['reference']['message_id'],'203')
         self.assertEqual((await self.event(203))['reason'],'Integration-generated message')
+
+    async def test_shared_state_worker_and_manual_execution_are_globally_busy(self):
+        from telegram_integration.application import Application
+        from telegram_integration.contracts import Message, RunResult
+        async def trigger(group,message): return Message(group,message,'#codex greet',topic_id=2)
+        self.telegram.message=trigger
+        started=asyncio.Event(); finish=asyncio.Event()
+        async def run(*args,**kwargs):
+            started.set(); await finish.wait(); return RunResult('Done','Hello','turn')
+        self.codex.run=run
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        other=Application(self.root/'db',self.root/'tasks',self.telegram,test_routing.Codex(),catalog=self.catalog)
+        worker=asyncio.create_task(self.app.handle({'action':'dispatch_pending'}))
+        try:
+            await asyncio.wait_for(started.wait(),1)
+            self.assertEqual((await asyncio.wait_for(other.handle({'action':'dispatch_pending'}),1))['status'],'busy')
+            self.assertEqual((await other.handle(dict(action='task',destination='project',group_id=10,message_id=103)))['status'],'busy')
+            self.assertEqual((await other.handle({'action':'monitor_status'}))['requests'][1]['status'],'pending')
+            self.assertEqual((await other.handle(dict(action='telegram_event',kind='new_message',group_id=10,message_id=103,sender_id=77,account_id=77,text='#codex')))['status'],'admitted')
+        finally:
+            finish.set(); await worker; await other.close()
+
+    async def test_deleted_trigger_cancels_but_unavailable_trigger_blocks(self):
+        from telegram_integration.contracts import MissingMessage
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        async def unavailable(group,message):
+            if message==101: raise MissingMessage('Message was deleted')
+            raise ConnectionError('Telegram offline')
+        self.telegram.message=unavailable
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'cancelled')
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'blocked')
+        self.assertEqual([r['status'] for r in (await self.app.handle({'action':'monitor_status'}))['requests']],['cancelled','blocked'])
+        self.assertEqual(self.codex.created,[])
+
+    async def test_queue_reads_current_bounded_inputs_once_then_continues_same_chat_after_restart(self):
+        from telegram_integration.contracts import Message, Context, RunResult
+        from telegram_integration.application import Application
+        texts={100:'draft preparation',101:'#codex first',102:'#codex second',103:'future reply'}
+        bounds=[]; prompts=[]; started=asyncio.Event(); finish=asyncio.Event()
+        async def message(group,identity): return Message(group,identity,texts[identity],topic_id=2)
+        async def context(group,identity,scope,*,upper_bound=None):
+            bounds.append(upper_bound)
+            return Context(tuple([await message(group,k) for k in sorted(texts) if upper_bound is None or k<=upper_bound]))
+        async def run(chat,cwd,prompt,**kwargs):
+            prompts.append(prompt); started.set(); await finish.wait(); return RunResult('Done','Hello','turn')
+        self.telegram.message=message; self.telegram.context=context; self.codex.run=run
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        texts[100]='corrected before execution'
+        worker=asyncio.create_task(self.app.handle({'action':'dispatch_pending'}))
+        try:
+            await asyncio.wait_for(started.wait(),1)
+            texts[100]='edited while first runs'
+        finally:
+            finish.set(); first=await worker
+        self.assertEqual(first['status'],'finished',first)
+        self.assertIn('corrected before execution',prompts[0])
+        self.assertNotIn('#codex second',prompts[0]); self.assertNotIn('future reply',prompts[0])
+        self.assertNotIn('edited while first runs',prompts[0])
+        await self.app.close()
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        second=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((second['task_id'],second['chat_id'],second['run']),(first['task_id'],first['chat_id'],2))
+        self.assertEqual(bounds,[101,102])
+        self.assertIn('edited while first runs',prompts[1]); self.assertIn('#codex second',prompts[1])
+        self.assertNotIn('future reply',prompts[1])
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'idle')
+
+    async def test_withdrawn_marker_and_incomplete_required_context_never_start_codex(self):
+        from telegram_integration.contracts import Message, Context
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        async def message(group,identity): return Message(group,identity,'Withdrawn' if identity==101 else '#codex work',topic_id=2)
+        async def context(group,identity,scope,*,upper_bound=None):
+            return Context((await message(group,identity),),False,'required reply unavailable')
+        self.telegram.message=message; self.telegram.context=context
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'cancelled')
+        blocked=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual(blocked['status'],'blocked'); self.assertIn('required reply unavailable',blocked['reason'])
+        self.assertEqual(self.codex.created,[])
+
+    async def test_another_process_owns_execution_and_crash_releases_ownership(self):
+        import sys
+        from telegram_integration.contracts import Message
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        self.telegram.message=message
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        script="""
+import asyncio, sys
+from pathlib import Path
+sys.path.insert(0,'tests')
+from test_routing import Telegram,Codex,Catalog
+from telegram_integration.application import Application
+from telegram_integration.contracts import Message
+async def main():
+    root=Path(sys.argv[1]); telegram=Telegram(); codex=Codex()
+    async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+    async def run(*args,**kwargs):
+        print('RUNNING',flush=True)
+        await asyncio.Event().wait()
+    telegram.message=message; codex.run=run
+    app=Application(root/'db',root/'tasks',telegram,codex,catalog=Catalog(root/'real'))
+    await app.handle({'action':'dispatch_pending'})
+asyncio.run(main())
+"""
+        child=await asyncio.create_subprocess_exec(sys.executable,'-c',script,str(self.root),stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
+        try:
+            self.assertEqual(await asyncio.wait_for(child.stdout.readline(),5),b'RUNNING\n')
+            self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'busy')
+            request=(await self.app.handle({'action':'monitor_status'}))['requests'][0]
+            self.assertIsNotNone(request['task_id'])
+            task=await self.app.handle({'action':'status','task_id':request['task_id']})
+            self.assertEqual(task['phase'],'executing')
+        finally:
+            child.kill(); await child.communicate()
+        # No blind rerun of the crashed request, and no stale ownership lock.
+        status=await self.app.handle({'action':'monitor_status'})
+        self.assertEqual([r['status'] for r in status['requests']],['running','pending'])
+        result=await self.app.handle({'action':'dispatch_pending'})
+        self.assertNotEqual(result['status'],'busy')
+
+    async def test_unknown_codex_outcome_retains_task_binding_and_blocks_later_execution(self):
+        from telegram_integration.contracts import Message
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        async def run(*args,**kwargs): raise ConnectionError('lost Codex connection after start')
+        self.telegram.message=message; self.codex.run=run
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'blocked')
+        requests=(await self.app.handle({'action':'monitor_status'}))['requests']
+        self.assertEqual([request['status'] for request in requests],['uncertain','pending'])
+        task=await self.app.handle({'action':'status','task_id':requests[0]['task_id']})
+        self.assertEqual(task['phase'],'executing')
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'blocked')
+        self.assertEqual((await self.app.handle(dict(action='task',destination='project',group_id=10,message_id=103)))['status'],'blocked')
+        self.assertEqual(len(self.codex.created),1)

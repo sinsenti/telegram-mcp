@@ -6,7 +6,7 @@ from urllib.parse import urlparse, parse_qs
 from dataclasses import replace
 from telethon import utils
 from telethon.tl import functions, types
-from .contracts import Blocked, Context, Message, Attachment, GroupMetadata
+from .contracts import Blocked, MissingMessage, Context, Message, Attachment, GroupMetadata
 
 class TelethonAdapter:
     def __init__(self, client):
@@ -105,8 +105,8 @@ class TelethonAdapter:
             entity=await self.client.get_entity(peer)
             if getattr(entity,'forum',False):
                 return Message(group_id,1,'',topic_id=1,is_topic_root=True)
-        if message is None:
-            raise Blocked('Selected Telegram message is missing or inaccessible')
+        if message is None or isinstance(message,types.MessageEmpty):
+            raise MissingMessage('Selected Telegram message is missing')
         if message.chat_id != group_id:
             raise Blocked('Selected message belongs to a different group')
         selected=self._normalize(message)
@@ -192,9 +192,11 @@ class TelethonAdapter:
         return Message(message.chat_id,message.id,message.raw_text or '',has_attachment,topic_id,
                        getattr(header,'reply_to_msg_id',None),isinstance(message.action,types.MessageActionTopicCreate),attachment)
 
-    async def context(self, group_id, message_id, scope):
+    async def context(self, group_id, message_id, scope, *, upper_bound=None):
         if scope not in ('message','topic'):
             raise Blocked('Selection scope must be message or topic')
+        if upper_bound is not None and (type(upper_bound) is not int or upper_bound < message_id):
+            raise Blocked('Context upper boundary must include the selected message')
         selected=await self.message(group_id,message_id)
         topic=selected.topic_id
         general=topic == 1
@@ -211,7 +213,7 @@ class TelethonAdapter:
             candidates[root.message_id]=root
         # Explicit page RPCs revalidate access before every remote fetch, without
         # refetching the complete folder and dialog list for each buffered item.
-        async for raw in self._history(group_id,None if general else topic or selected.message_id):
+        async for raw in self._history(group_id,None if general else topic or selected.message_id,upper_bound=upper_bound):
             item=self._normalize(raw)
             if general:
                 if item.topic_id not in (None,1):
@@ -241,11 +243,11 @@ class TelethonAdapter:
             found[item.message_id]=item
         return tuple(found[key] for key in sorted(found))
 
-    async def _history(self, group_id, reply_to=None, query=None):
+    async def _history(self, group_id, reply_to=None, query=None, *, upper_bound=None):
         offset=0
         while True:
             peer=await self._peer(group_id)
-            arguments=dict(peer=peer,offset_id=offset,offset_date=None,add_offset=0,limit=100,max_id=0,min_id=0,hash=0)
+            arguments=dict(peer=peer,offset_id=offset,offset_date=None,add_offset=0,limit=100,max_id=0 if upper_bound is None else upper_bound+1,min_id=0,hash=0)
             if query is not None:
                 arguments.pop('offset_date')
                 request=functions.messages.SearchRequest(q=query,filter=types.InputMessagesFilterEmpty(),
@@ -263,6 +265,8 @@ class TelethonAdapter:
             if next_offset <= 0 or offset and next_offset >= offset:
                 raise Blocked('Telegram history pagination did not advance')
             for raw in result.messages:
+                if upper_bound is not None and raw.id > upper_bound:
+                    raise Blocked('History returned a message beyond the selected context boundary')
                 if getattr(raw,'chat_id',None) != group_id:
                     raise Blocked('History contains a missing message or a different destination')
                 yield raw
