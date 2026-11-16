@@ -23,9 +23,10 @@ checks cover remote-success/lost-create-ack and accepted-turn/lost-completion-ac
 Recovery entrypoint and missing-acceptance correlation scenarios are shared with
 ticket 11. See `docs/codex-recovery.md`.
 
-Live supplied-client-ID persistence and same-owner interruption/terminal readback
-are pending a coordinated parent-run probe; no live clients were started by this
-implementation. Schema availability and fake contracts are not live evidence.
+Initial checkpoint before the coordinated probes: supplied-client-ID persistence
+and same-owner interruption/terminal readback were pending. The later live
+evidence and final outcome are recorded under Answer below. Schema availability
+and fake contracts alone are not live evidence.
 Unknown create, absent/ambiguous correlation, and unavailable cross-process control
 remain visible blockers. The pre-start active-work check is not atomic against a
 concurrent desktop start.
