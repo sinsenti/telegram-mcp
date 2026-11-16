@@ -112,14 +112,89 @@
     "terminal_interrupted_event_monotonic": 27716.750833053
   },
   "limitations": [
-    "Fresh creation-owner interruption rejected; control capability differs from resumed owner and remains under investigation.",
-    "Rejected RPC is not an acknowledgment; later interrupted state after owner shutdown does not prove that RPC interrupted work.",
-    "Cross-process interruption and atomic expected-idle start remain unverified."
+    "Cross-process interruption was not exercised: same-owner fresh control succeeded after the exact turn/started event, so no fallback was attempted.",
+    "An interrupt rejected before readiness remains rejected in the historical receipts; later terminal state after owner shutdown is not attributed to that rejected RPC.",
+    "Atomic expected-idle start against concurrent desktop input remains unsupported."
   ],
   "initial_regression": {
     "chat_id": "01a1e4da-d0b1-75c3-a288-a31df9e24931",
     "turn_sent": false,
     "error": "thread/turns/list unavailable before first user message",
     "fix": "5e2e591: retained fresh owner skips persisted-history guard; metadata check stays; resumed chats retain full guard"
-  }
+  },
+  "fresh_owner_control_after_started_event": {
+    "client_request_id": "df9c7e04-c3d0-40b0-8ba6-0e3d64b2a0b7",
+    "control_attempts": [
+      {
+        "route": "fresh-owner-after-turn-started-event",
+        "acknowledged": true
+      }
+    ],
+    "chat_id": "01a1e4e4-b1a3-72e0-91ad-8674f3dec15d",
+    "turn_id": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+    "actual_started_event_seen": true,
+    "run_reason": "Codex turn 01a1e4e4-b1ec-7230-969b-4ec1a0036b21 interrupted: None",
+    "terminal": {
+      "turn_id": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+      "status": "interrupted",
+      "result": null,
+      "reason": null
+    }
+  },
+  "fresh_owner_wire_proof": [
+    {
+      "monotonic": 28005.458756548,
+      "direction": "send",
+      "id": 4,
+      "method": "turn/start",
+      "threadId": "01a1e4e4-b1a3-72e0-91ad-8674f3dec15d",
+      "turnId": null,
+      "turnStatus": null
+    },
+    {
+      "monotonic": 28005.466448334,
+      "direction": "receive",
+      "id": 4,
+      "method": null,
+      "threadId": null,
+      "turnId": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+      "turnStatus": "inProgress"
+    },
+    {
+      "monotonic": 28006.571776693,
+      "direction": "receive",
+      "id": null,
+      "method": "turn/started",
+      "threadId": "01a1e4e4-b1a3-72e0-91ad-8674f3dec15d",
+      "turnId": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+      "turnStatus": "inProgress"
+    },
+    {
+      "monotonic": 28006.576886531,
+      "direction": "send",
+      "id": 5,
+      "method": "turn/interrupt",
+      "threadId": "01a1e4e4-b1a3-72e0-91ad-8674f3dec15d",
+      "turnId": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+      "turnStatus": null
+    },
+    {
+      "monotonic": 28006.627944765,
+      "direction": "receive",
+      "id": 5,
+      "method": null,
+      "threadId": null,
+      "turnId": null,
+      "turnStatus": null
+    },
+    {
+      "monotonic": 28006.628112547,
+      "direction": "receive",
+      "id": null,
+      "method": "turn/completed",
+      "threadId": "01a1e4e4-b1a3-72e0-91ad-8674f3dec15d",
+      "turnId": "01a1e4e4-b1ec-7230-969b-4ec1a0036b21",
+      "turnStatus": "interrupted"
+    }
+  ]
 }
