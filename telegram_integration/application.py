@@ -140,7 +140,7 @@ class Application:
                     text='\n\n'.join(m['text'] for m in messages),has_attachment=any(m['has_attachment'] for m in messages))
 
     async def handle(self, command: dict) -> dict:
-        """Manual commands today; later normalized listener commands use this seam."""
+        """Manual commands, normalized listener events, and worker dispatch share this seam."""
         action=command.get('action')
         try:
             if action in ('monitor_enable','monitor_refresh','monitor_status','telegram_event'):

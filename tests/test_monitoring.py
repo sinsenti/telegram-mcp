@@ -32,6 +32,10 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.telegram.message=trigger
         result=await self.app.handle({'action':'dispatch_pending'})
         self.assertEqual(result['status'],'finished',result)
+        await self.event(102)
+        followup=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((followup['task_id'],followup['chat_id'],followup['run']),(result['task_id'],result['chat_id'],2))
+        self.assertEqual(len(self.codex.created),1)
     async def test_edits_other_authors_generated_echo_and_old_messages_cannot_trigger(self):
         await self.app.handle({'action':'monitor_enable'})
         for change in ({'kind':'edit'},{'sender_id':88},{'edited':True},{'message_id':1}):
@@ -63,19 +67,15 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         finish.set(); self.assertEqual((await worker)['status'],'finished')
         self.assertNotIn('later instruction',prompts[0])
         self.assertEqual((await self.event(201))['reason'],'Integration-generated message')
-    async def zero(self): return 0
 
     async def test_uncertain_send_holds_self_echo_instead_of_recursing(self):
         await self.app.handle({'action':'monitor_enable'})
         async def failed(*args): raise TimeoutError('unknown send result')
         self.telegram.send_text=failed
-        self.telegram.allowed_groups=lambda folder: self.groups()
-        self.telegram.latest_message_id=self.latest
         # Test uncertain report on an active ready group through public task seam.
         await self.app.handle({'action':'task','destination':'project','group_id':10,'message_id':3})
         self.assertEqual((await self.event())['status'],'held')
-    async def groups(self): return {10}
-    async def test_new_group_is_ready_before_acceptance_and_does_not_reactivate_on_restart(self):
+    async def test_new_group_requires_readiness_and_removal_pauses_pending_work(self):
         groups={10}
         async def allowed(folder): return groups.copy()
         self.telegram.allowed_groups=allowed
