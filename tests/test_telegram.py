@@ -231,3 +231,27 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
             with path.open('ab') as stream,self.assertRaisesRegex(Blocked,'changed'):
                 await adapter.download(selected.group_id,42,replace(selected.attachment,media_id='other'),stream)
             self.assertEqual(path.read_bytes(),b'blue 731\n')
+
+    async def test_topic_reference_operations_use_stable_topic_and_message_ids_with_fresh_access(self):
+        class ReferenceClient(Client):
+            async def __call__(self, request):
+                if isinstance(request,functions.messages.GetForumTopicsByIDRequest):
+                    self.requests.append(request)
+                    return NS(topics=[NS(id=5,title='Canonical')])
+                return await super().__call__(request)
+            async def get_messages(self, peer, ids):
+                raw=await super().get_messages(peer,ids)
+                raw.out=True; raw.pinned=True
+                return raw
+        client=ReferenceClient(); adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        self.assertEqual(await adapter.topic_title(-1000000000010,5),'Canonical')
+        await adapter.rename_topic(-1000000000010,5,'Updated')
+        await adapter.edit_reference(-1000000000010,5,'42','Full title')
+        await adapter.pin_reference(-1000000000010,5,'42')
+        self.assertEqual(await adapter.reference(-1000000000010,5,'42'),{'text':'Old task','pinned':True})
+        requests=client.requests
+        self.assertTrue(any(isinstance(r,functions.messages.EditForumTopicRequest) and r.topic_id==5 and r.title=='Updated' for r in requests))
+        self.assertTrue(any(isinstance(r,functions.messages.UpdatePinnedMessageRequest) and r.id==42 and r.silent for r in requests))
+        client.filter.include_peers=[]
+        with self.assertRaises(Blocked): await adapter.pin_reference(-1000000000010,5,'42')

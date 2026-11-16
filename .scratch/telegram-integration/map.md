@@ -16,6 +16,8 @@ Implementation branch: `integration/telegram-codex`. The approved spec and numbe
 
 - [Ticket 05](./issues/05-route-task-topics-into-real-codex-projects.md#answer) is resolved after an approved two-turn live route, same-chat/folder continuation, source-report round trip and actual desktop placement in the existing help project. [Evidence](./routing-live-test.json).
 
+- [Ticket 06](./issues/06-attach-topics-to-existing-codex-chats.md#answer) implements explicit numbered linkage, current membership validation, stable folder reuse, and exact-message command normalization. [API and live proposal](../../docs/chat-linking.md). Live acceptance remains pending.
+
 ## Fog
 
 - Tickets 06 (existing-chat linking), 07 (title/reference synchronization), and 08 (fresh-trigger monitoring) are now unblocked.

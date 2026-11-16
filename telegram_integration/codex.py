@@ -128,11 +128,48 @@ class CodexAppServer:
             await context.__aexit__(None, None, None)
             raise
 
+    async def list_chats(self, project_id: str, cwd: Path) -> list[dict]:
+        """Read title/identity metadata only, including scoped legacy chats.
+
+        Canonical project membership is authoritative. The caller additionally
+        proves that a legacy exact cwd identifies one current catalog project.
+        """
+        chats = {}
+        async with self._connect(cwd) as connection:
+            for filters in ({'projectId':project_id}, {'projectId':None,'cwd':str(cwd)}):
+                cursor = None
+                seen = set()
+                while True:
+                    result = await connection.request('thread/list', dict(filters,cursor=cursor,limit=100,archived=False))
+                    for thread in result['data']:
+                        identity = thread['id']
+                        if not isinstance(identity,str) or not identity or not isinstance(thread['cwd'],str):
+                            raise Blocked('Codex returned invalid chat metadata')
+                        canonical = thread.get('projectId')
+                        if canonical is not None and (not isinstance(canonical,str) or not canonical):
+                            raise Blocked('Codex returned invalid canonical chat membership')
+                        if thread.get('name') is not None and not isinstance(thread['name'],str):
+                            raise Blocked('Codex returned invalid chat title')
+                        if canonical != project_id and not (canonical is None and thread['cwd'] == str(cwd)):
+                            continue
+                        chat = {'chat_id':identity,'title':thread.get('name') or identity,
+                                'project_id':canonical,'cwd':thread['cwd']}
+                        if identity in chats and chats[identity] != chat:
+                            raise Blocked('Codex chat metadata changed during listing; refresh')
+                        chats[identity] = chat
+                    cursor = result['nextCursor']
+                    if cursor is None:
+                        break
+                    if not isinstance(cursor,str) or cursor in seen:
+                        raise Blocked('Codex chat pagination did not advance')
+                    seen.add(cursor)
+        return list(chats.values())
+
     async def observe_chat(self, chat_id: str, cwd: Path) -> dict:
         async with self._connect(cwd) as connection:
             result = await connection.request('thread/read', {'threadId':chat_id,'includeTurns':False})
             thread=result['thread']
-            return {'chat_id':thread['id'],'cwd':thread['cwd'],'project_id':thread.get('projectId')}
+            return {'chat_id':thread['id'],'cwd':thread['cwd'],'project_id':thread.get('projectId'),'name':thread.get('name')}
 
     @asynccontextmanager
     async def _chat_connection(self, chat_id, cwd):
