@@ -195,7 +195,10 @@ class Application:
                     'folder':str(self.workspace/task_id), 'chat_id':None, 'status':'pending', 'run':0}
         else:
             task = self._task(c['task_id'])
-            if task['status'] != 'finished':
+            can_continue=(task['status']=='blocked'
+                          and task.get('phase') in ('capturing_inputs','terminal_result')
+                          and not task.get('report_blocker'))
+            if task['status'] != 'finished' and not can_continue:
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
             if 'group_id' in c and int(c['group_id']) != task['group_id']:
@@ -216,6 +219,10 @@ class Application:
         task['run'] += 1
         (folder/f"input-{task['run']}.txt").write_text(text)
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
+        # These fields describe only the current run. Earlier artifacts remain on disk.
+        for key in ('turn_id','input_evidence','result_status','explanation','document',
+                    'report_ids','blocker_report_id','report_blocker'):
+            task.pop(key,None)
         task.update(status='running', reason=None, topic_id=m.topic_id)
         self._save(task)
         try:
@@ -289,12 +296,15 @@ class Application:
             self._save(task)
             prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'
             result = await self.codex.run(task['chat_id'], folder, prompt, inputs=inputs) if inputs else await self.codex.run(task['chat_id'], folder, prompt)
-            task.update(turn_id=result.turn_id, input_evidence=[asdict(item) for item in result.input_evidence])
+            task.update(turn_id=result.turn_id, explanation=result.explanation,
+                        result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
+            (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
+            task['phase']='terminal_result'
             self._save(task)
             (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
-            validate_evidence(inputs,result.input_evidence)
             if result.status != 'completed':
                 raise Blocked(result.explanation)
+            validate_evidence(inputs,result.input_evidence)
             for item in inputs:
                 owned_directory(Path(item.path).parent)
                 if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:

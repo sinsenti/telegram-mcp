@@ -132,3 +132,20 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['status'],'blocked')
         self.assertIn('attachment',result['reason'])
         self.assertEqual(self.codex.chats,[])
+
+    async def test_unknown_creation_and_execution_outcomes_cannot_continue(self):
+        async def uncertain(*args):
+            raise TimeoutError('Codex acknowledgment lost; inspect chat')
+        for phase in ('creating_chat','executing'):
+            with self.subTest(phase=phase):
+                self.codex.create_chat=Codex().create_chat
+                self.codex.run=Codex().run
+                if phase=='creating_chat':
+                    self.codex.create_chat=uncertain
+                else:
+                    self.codex.run=uncertain
+                blocked=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+                self.assertEqual(blocked['phase'],phase)
+                again=await self.app.handle({'action':'followup','task_id':blocked['task_id'],'message_id':43})
+                self.assertEqual(again['status'],'blocked')
+                self.assertEqual(await self.app.handle({'action':'status','task_id':blocked['task_id']}),blocked)

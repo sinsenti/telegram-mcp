@@ -81,9 +81,12 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
         self.telegram.context=context;self.telegram.download=download;self.codex.run=run
         blocked=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
         self.assertEqual(blocked['status'],'blocked')
-        result=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test',
+        result=await self.app.handle({'action':'followup','task_id':blocked['task_id'],'message_id':42,
                                       'unnecessary_input_ids':['10:42:archive']})
         self.assertEqual(result['status'],'finished',result)
+        self.assertEqual(result['folder'],blocked['folder'])
+        self.assertEqual(result['run'],2)
+        self.assertTrue(Path(blocked['inputs'][0]['path']).exists())
         self.assertEqual(Path(result['inputs'][0]['path']).read_bytes(),b'opaque archive')
 
     async def test_five_format_findings_are_orchestration_only(self):
@@ -140,3 +143,44 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
         result=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
         self.assertEqual(result['status'],'blocked')
         self.assertIn('changed during execution',result['reason'])
+
+    async def test_usable_replacement_keeps_existing_chat_without_stale_run_evidence(self):
+        async def context(group,message,scope):
+            name='extras.zip' if message==43 else 'note.txt'
+            return Context((Message(group,message,'Use original',True,2,
+                attachment=Attachment('a',name)),))
+        async def download(group,message,attachment,file): file.write(b'original')
+        async def run(*args,inputs=()):
+            return RunResult('Read original','# Result','turn-'+str(inputs[0].source_message_id),
+                (InputEvidence(inputs[0].input_id,'interpreted','Line 1: original'),))
+        self.telegram.context=context;self.telegram.download=download;self.codex.run=run
+        first=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+        self.assertEqual(first['status'],'finished',first)
+        blocked=await self.app.handle({'action':'followup','task_id':first['task_id'],'message_id':43})
+        self.assertEqual(blocked['status'],'blocked',blocked)
+        for key in ('turn_id','input_evidence','result_status','document','explanation','report_ids'):
+            self.assertNotIn(key,blocked)
+        again=await self.app.handle({'action':'followup','task_id':first['task_id'],'message_id':44})
+        self.assertEqual(again['status'],'finished',again)
+        self.assertEqual(again['folder'],first['folder'])
+        self.assertEqual(again['chat_id'],first['chat_id'])
+        self.assertEqual(len(self.codex.chats),1)
+        self.assertEqual(again['turn_id'],'turn-44')
+        self.assertTrue(Path(first['inputs'][0]['path']).exists())
+        self.assertTrue(Path(blocked['inputs'][0]['path']).exists())
+        self.assertTrue(Path(first['document']).exists())
+        self.assertTrue((Path(first['folder'])/'evidence-1.json').exists())
+
+    async def test_lost_blocker_report_ack_prevents_continuation(self):
+        async def context(group,message,scope):
+            return Context((Message(group,message,'Use original',True,
+                attachment=Attachment('a','extras.zip')),))
+        async def download(group,message,attachment,file): file.write(b'original')
+        async def uncertain(*args): raise TimeoutError('Telegram acknowledgment lost')
+        self.telegram.context=context;self.telegram.download=download;self.telegram.send_text=uncertain
+        blocked=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+        self.assertEqual(blocked['phase'],'capturing_inputs')
+        again=await self.app.handle({'action':'followup','task_id':blocked['task_id'],'message_id':43})
+        self.assertEqual(again['status'],'blocked')
+        self.assertEqual(await self.app.handle({'action':'status','task_id':blocked['task_id']}),blocked)
+        self.assertEqual(self.codex.chats,[])
