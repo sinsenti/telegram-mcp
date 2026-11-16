@@ -29,6 +29,9 @@ class Monitoring:
             folder=app.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
             if not folder: raise Blocked('Select a folder before enabling monitoring')
             account=await app.telegram.self_id()
+            previous=app.db.execute("SELECT value FROM settings WHERE key='monitor_account'").fetchone()
+            if previous and int(previous[0])!=account:
+                raise Blocked('Monitoring state belongs to a different Telegram account; use its original session')
             with app.db:
                 app.db.execute("INSERT OR REPLACE INTO settings VALUES ('monitor_account',?)",(str(account),))
             groups=await app.telegram.allowed_groups(int(folder[0]))
@@ -100,8 +103,14 @@ class Monitoring:
         if not row: return {'status':'idle'}
         sequence,group,message,data=row
         event=json.loads(data)
-        await app._access(group)
-        trigger=await app._read(group,message)
+        try:
+            await app._access(group)
+            trigger=await app._read(group,message)
+        except Exception as error:
+            event['outcome']={'status':'blocked','reason':str(error)}
+            with app.db:
+                app.db.execute("UPDATE trigger_requests SET status='blocked',data=? WHERE sequence=?",(json.dumps(event),sequence))
+            return event['outcome']
         if not MARKER.search(trigger.text):
             with app.db: app.db.execute("UPDATE trigger_requests SET status='cancelled' WHERE sequence=?",(sequence,))
             return {'status':'cancelled'}
