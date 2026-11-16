@@ -1,0 +1,115 @@
+{
+  "group_id": -1003989567415,
+  "selected_chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+  "outgoing": [
+    {
+      "name": "topic",
+      "random_id": 7448060397052181759,
+      "status": "acknowledged",
+      "message_id": 21
+    },
+    {
+      "name": "link_request",
+      "random_id": 4563140212008473902,
+      "status": "acknowledged",
+      "message_id": 22
+    },
+    {
+      "name": "choice_report",
+      "random_id": 353604168629538895,
+      "status": "acknowledged",
+      "message_id": 23
+    },
+    {
+      "name": "number_selection",
+      "random_id": 1335983428790328870,
+      "status": "acknowledged",
+      "message_id": 24
+    },
+    {
+      "name": "marker_request",
+      "random_id": 5739841481427714735,
+      "status": "acknowledged",
+      "message_id": 25
+    }
+  ],
+  "phase": "link_and_continuation_verified",
+  "original_name": "Telegram connection test - verified",
+  "topic_id": 21,
+  "choices": {
+    "status": "chat_choice",
+    "choice_id": "c34360bb28fd4093a996f3b7303b993a",
+    "group_id": -1003989567415,
+    "topic_id": 21,
+    "choices": [
+      {
+        "chat_id": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+        "title": "01a1e473-8c30-7821-99f1-6279e9947a2a",
+        "membership": "canonical",
+        "choice": 1
+      },
+      {
+        "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+        "title": "Telegram connection test - verified",
+        "membership": "unique_project_cwd",
+        "choice": 2
+      },
+      {
+        "chat_id": "01a1df7f-8ac9-7452-962e-16d3232d2647",
+        "title": "AI Helper",
+        "membership": "unique_project_cwd",
+        "choice": 3
+      }
+    ]
+  },
+  "linked": {
+    "task_id": "430aa3849f434f4b82883e865859179d",
+    "group_id": -1003989567415,
+    "topic_id": 21,
+    "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+    "cwd": "/home/user/git/personal/help",
+    "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+    "folder": "/home/user/git/personal/telegram-mcp/.local/tasks/430aa3849f434f4b82883e865859179d",
+    "status": "linked",
+    "run": 0,
+    "membership": "unique_project_cwd"
+  },
+  "outcome": {
+    "task_id": "430aa3849f434f4b82883e865859179d",
+    "group_id": -1003989567415,
+    "topic_id": 21,
+    "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+    "cwd": "/home/user/git/personal/help",
+    "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+    "folder": "/home/user/git/personal/telegram-mcp/.local/tasks/430aa3849f434f4b82883e865859179d",
+    "status": "finished",
+    "run": 1,
+    "membership": "unique_project_cwd",
+    "message_id": 25,
+    "scope": "message",
+    "reason": null,
+    "inputs": [],
+    "phase": "complete",
+    "placement": {
+      "status": "legacy_cwd_verified_desktop_unverified",
+      "observations": [
+        {
+          "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+          "cwd": "/home/user/git/personal/help",
+          "project_id": null,
+          "name": "Telegram connection test - verified"
+        }
+      ]
+    },
+    "turn_id": "01a1e493-5037-7603-b809-8d2310bbabb2",
+    "explanation": "No blockers.",
+    "result_status": "completed",
+    "input_evidence": [],
+    "document": "/home/user/git/personal/telegram-mcp/.local/tasks/430aa3849f434f4b82883e865859179d/result-1.md",
+    "report_ids": [
+      "26",
+      "27"
+    ]
+  },
+  "invalid_choice_status": "blocked"
+}

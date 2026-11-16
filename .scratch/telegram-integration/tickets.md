@@ -37,11 +37,11 @@ Tickets 01 and 02 can start independently. Ticket 01 must establish a supported 
 
 ## Current implementation status
 
-Tickets 01–05 are resolved; stage 1 and live real-project routing are complete:
+Tickets 01–07 are resolved; stages 1 and 2 are complete:
 
 - 01: the desktop-origin rename and restoration were observed in both catalog views with stable IDs and directories; see [live evidence](./catalog-refresh-live-test.json).
 - 02: the approved live manual text task completed in one real Codex chat, and its text/Markdown replies were verified in the original Telegram topic, including a byte-for-byte file comparison; see [evidence](./manual-workflow-live-test.json).
 
 Ticket 03 is resolved after successful bounded live reads using the final raw-page adapter. Both message-with-replies and whole-topic scopes, completeness, and private-link identities were verified; see [evidence](./discussion-read-live-test.json).
 
-Ticket 04 is resolved after the approved five-file live test: actual Codex interpretation, unchanged originals, same-chat/folder follow-up, source-specific replies and downloaded Markdown equality all passed. [Evidence](./attachments-live-test.json). All 51 root tests pass. Ticket 05 is resolved after its approved live test verified the new topic/chat, two-turn continuation, source delivery and existing help desktop project placement. [Evidence](./routing-live-test.json). Tickets 06–08 are now unblocked; tickets 06–14 remain unimplemented. No additional new chat was created; the attachment test used exactly one follow-up in the existing test chat.
+Ticket 04 is resolved after the approved five-file live test: actual Codex interpretation, unchanged originals, same-chat/folder follow-up, source-specific replies and downloaded Markdown equality all passed. [Evidence](./attachments-live-test.json). All 51 root tests pass. Ticket 05 is resolved after its approved live test verified the new topic/chat, two-turn continuation, source delivery and existing help desktop project placement. [Evidence](./routing-live-test.json). Tickets 06–07 passed real selection/continuation, desktop-name observation, topic synchronization and pinned-reference checks. [Link evidence](./linking-live-test.json), [reference evidence](./title-reference-live-test.json). Ticket 08 is implemented/reviewed, all 91 root tests pass, and live activation has announced readiness; its genuine human-trigger/automatic-continuation check is pending user input. Tickets 09–14 remain unimplemented and blocked by the graph. No additional new chat was created; the attachment test used exactly one follow-up in the existing test chat.

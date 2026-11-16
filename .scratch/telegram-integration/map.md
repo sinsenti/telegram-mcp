@@ -4,6 +4,8 @@
 
 Implementation branch: `integration/telegram-codex`. The approved spec and numbered tickets define the remaining task graph.
 
+The user authorized running these controlled Telegram/Codex integration tests without per-test approval prompts on 2026-11-16. Continue bounded verification in the existing allowed test group and test-owned chats/topics; human-only actions still require user participation. This standing authorization supersedes the earlier per-test confirmation workflow.
+
 ## Decisions-so-far
 
 - [Ticket 02](./issues/02-run-a-manual-text-task-and-report-its-result.md#answer) is resolved. The explicitly authorized live text workflow completed one Codex turn and delivered verified text and Markdown replies to the selected source topic. [Evidence](./manual-workflow-live-test.json).
@@ -18,6 +20,9 @@ Implementation branch: `integration/telegram-codex`. The approved spec and numbe
 
 - [Ticket 06](./issues/06-attach-topics-to-existing-codex-chats.md#answer) implements explicit numbered linkage, current membership validation, stable folder reuse, and exact-message command normalization. [API and live proposal](../../docs/chat-linking.md). Live acceptance remains pending.
 
+- [Ticket 06](./issues/06-attach-topics-to-existing-codex-chats.md#answer) is resolved after real numbered existing-chat selection, invalid-choice rejection and same-chat/folder continuation. [Evidence](./linking-live-test.json).
+- [Ticket 07](./issues/07-synchronize-topic-titles-and-pinned-chat-references.md#answer) is resolved after actual desktop title observation, topic/reference/pin updates and restoration. [Evidence](./title-reference-live-test.json). Stage 2 is complete.
+
 ## Fog
 
-- Tickets 06 (existing-chat linking), 07 (title/reference synchronization), and 08 (fresh-trigger monitoring) are now unblocked.
+- Ticket 08 listener is implemented/reviewed, 91 tests pass, and live readiness is confirmed. Waiting for the user to post a genuine Telegram #codex request to complete identity/event/automatic-continuation acceptance. Tickets 09–14 remain blocked by the graph.

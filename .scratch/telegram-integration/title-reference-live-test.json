@@ -1,0 +1,58 @@
+{
+  "chatId": "01a1e17d-73b4-7150-a085-70d68488bc88",
+  "originalName": "Telegram connection test - verified",
+  "temporaryName": "Telegram #codex title verification яяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяяя",
+  "temporary": {
+    "task_id": "430aa3849f434f4b82883e865859179d",
+    "topic_id": 21,
+    "status": "finished",
+    "reference_sync": {
+      "name": "Telegram #codex title verification яяяяяяяяяяяяяяяяяяяяяяяя…",
+      "observation": {
+        "status": "current"
+      },
+      "title": {
+        "status": "current",
+        "desired": "Telegram #codex title verification яяяяяяяяяяяяяяяяяяяяяяяя…"
+      },
+      "desired_text": "Project: help\nChat: Telegram #codex title verification яяяяяяяяяяяяяяяяяяяяяяяя…\nStatus: finished\nCodex: codex://threads/01a1e17d-73b4-7150-a085-70d68488bc88\nChat ID: 01a1e17d-73b4-7150-a085-70d68488bc88",
+      "reference": {
+        "status": "current",
+        "message_id": "29",
+        "reason": null
+      },
+      "pin": {
+        "status": "current"
+      }
+    }
+  },
+  "restoreToolError": false,
+  "restored": {
+    "task_id": "430aa3849f434f4b82883e865859179d",
+    "topic_id": 21,
+    "status": "finished",
+    "reference_sync": {
+      "name": "Telegram connection test - verified",
+      "observation": {
+        "status": "current"
+      },
+      "title": {
+        "status": "current",
+        "desired": "Telegram connection test - verified"
+      },
+      "desired_text": "Project: help\nChat: Telegram connection test - verified\nStatus: finished\nCodex: codex://threads/01a1e17d-73b4-7150-a085-70d68488bc88\nChat ID: 01a1e17d-73b4-7150-a085-70d68488bc88",
+      "reference": {
+        "status": "current",
+        "message_id": "29",
+        "reason": null
+      },
+      "pin": {
+        "status": "current"
+      }
+    }
+  },
+  "status": "passed",
+  "validationBasis": "Telegram follows the canonical name actually saved by Codex, not the raw requested label. The desktop shortened the long input label; both that saved name and the restored original were observed and synchronized.",
+  "temporaryRequestedNameShortenedByDesktop": true,
+  "chatAndTopicBindingUnchanged": true
+}

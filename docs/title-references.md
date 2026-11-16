@@ -19,3 +19,7 @@ No live topic rename, pin, reference send, or Codex name mutation was performed 
 3. Confirm partial permission failure reporting and access removal in the configured test environment where authorized.
 
 Current proposed existing binding: chat `01a1e473-8c30-7821-99f1-6279e9947a2a`, Telegram group `-1003989567415`, topic `14`, folder `8`, task `adf97cc4bc1043d294804cf9650af812`. This identifies the proposed verification scope and grants no authorization to mutate it.
+
+## Completed controlled live acceptance
+
+The desktop-origin title change on the linked owned test chat was observed through canonical Thread.name, and the actual saved name propagated to the Telegram topic and full pinned project/status/chat reference. The original name was restored and both destinations verified again, reusing reference message 29. The desktop shortened the oversized requested fixture label before saving; synchronization correctly uses that actual canonical saved value. Unicode byte-limit behavior is also covered by unit/adapter checks. [Evidence](../.scratch/telegram-integration/title-reference-live-test.json). Ticket 07 is resolved. Periodic listener synchronization also confirmed a null-title chat retains its topic identity and a pending-title reference without a replacement chat.

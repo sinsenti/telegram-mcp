@@ -5,7 +5,7 @@ The local listener and manual transport call the same `Application.handle` bound
 After connecting the existing Telegram account and selecting the intended folder, the runnable entry point is:
 
 ```sh
-python -m telegram_integration.listener --state-directory .local --folder-id 8
+uv run --locked --env-file .env python -m telegram_integration.listener --state-directory .local --folder-id 8
 ```
 
 Starting this command enables monitoring, writes readiness messages in newly enabled groups, and permits real Codex work from fresh requests. Do not start it merely to inspect configuration. `--sync-references` additionally permits periodic linked-topic title/reference updates. The state directory must be the directory containing the authorized account's `telegram.session` and `state.sqlite`; selecting a different directory does not migrate them. Credentials come from `TELEGRAM_API_ID` and `TELEGRAM_API_HASH`. No changes were made to the existing manual CLI setup/login flow.
@@ -28,3 +28,7 @@ All integration-generated text/documents/references must pass through Applicatio
 This ticket supplies the admission and basic worker foundation. Ticket 09 completes queue withdrawal/order/input lifecycle behavior; 10 supplies paginated application catch-up; 11–14 supply crash/task/action/report reconciliation and interruption. In particular a request left `running` at process exit is retained and does not restart automatically. Removing a group pauses pending requests and prevents further Telegram operations through current access checks; running-turn interruption is ticket 12. Offline edited history cannot prove that the original message had a marker and is conservatively excluded with a visible reason. Readiness with an uncertain response remains unresolved rather than being resent or resetting the activation cutoff silently.
 
 No live activation, readiness message, or automatic turn was performed for ticket 08. The automated checks use real SQLite and task files with external Telegram/Codex substitutes, including admission during a deliberately blocked turn and a thin Telethon-envelope translation check. The real account's identity/update behavior and desktop-visible automatic continuation still need an explicitly approved live test. Proposed test: activate only the already selected folder/group, inspect its readiness message and durable cutoff, have the user post a new human-authored `#codex` in the approved existing linked topic, observe one continuation and source-specific report, then replay the same envelope locally to confirm no second turn. A connector must never post the human marker on the user's behalf to simulate eligibility.
+
+## Current live check
+
+The user has authorized these controlled integration tests without per-test approval prompts. A scoped listener using the existing account/folder/group has announced readiness at cutoff message 32, admitted no historical requests, and synchronized test-owned references. One genuine human-authored Telegram trigger is required to finish live update/identity/automatic-continuation acceptance. Do not manufacture it through the connector; use the actual Telegram client. Stop the controlled listener once that verification and duplicate-delivery check complete.

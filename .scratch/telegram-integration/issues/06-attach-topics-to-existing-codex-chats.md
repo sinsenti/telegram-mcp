@@ -4,7 +4,7 @@
 
 **Blocked by:** 05: Route task topics into real Codex projects.
 
-**Status:** needs-info
+**Status:** resolved
 
 - [x] Present a numbered selection containing only chats from the group's assigned project.
 - [x] Validate the selected identifier against the presented choices and project; reject stale or invalid choices without rebinding.
@@ -22,3 +22,9 @@ Nine application tests and a scoped paginated subprocess adapter contract pass. 
 ## Review regression fix
 
 Explicit follow-ups now verify that the saved task still owns its current topic binding and that the linked chat has no foreign topic owner before retrieving source context or invoking Codex. A shared-interface regression reproduces chat A moving from topic 2 to topic 9 after topic 2 switches to chat B: the superseded task ID is rejected without a Codex action, and later ordinary tasks continue B in topic 2 and A in topic 9. Live acceptance remains pending.
+
+## Answer
+
+Resolved after controlled live selection in topic 21 and continuation of the earlier owned connection-test chat. [Evidence](../linking-live-test.json) records project-only numbered choices, rejection of invalid choice 0, selection by an actual numbered source message, and one completed marker turn in the selected existing chat with the same retained task folder. Source-specific text/Markdown replies 26–27 were verified, including byte-identical downloaded report contents. No new Codex chat was created. The linked legacy chat has a null canonical project ID and a uniquely verified exact help directory; its existing desktop association was preserved rather than moved or repaired.
+
+The stale-binding regression is fixed: superseded explicit task IDs cannot revive a previous topic assignment. [Decision recorded in the implementation map](../map.md#decisions-so-far).
