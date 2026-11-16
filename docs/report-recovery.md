@@ -11,13 +11,18 @@ command afterwards to finish any file not yet journaled.
 
 The completed result's document digest is committed with the task as soon as the result file is written, before the explanation's first remote call. Recovery verifies those original bytes before new or replayed uploads and after awaited sends. A local edit after a lost explanation acknowledgment therefore blocks upload rather than defining a new report payload; restoring the original bytes permits recovery. Partial legacy reports missing that original document identity require manual inspection.
 
-Each new send commits its kind, group, source message/topic, payload, Telegram
-account (when supported by the adapter), random ID and document digest before
-sending. Document bytes must remain unchanged. Acknowledgment and generated
-message identity commit together, including mappings observed before RPC return.
-The adapter parses the RPC response for the matching random ID; the listener also
-accepts recovered UpdateMessageID mappings. Ordinary RPC updates are not assumed
-to reach Telethon Raw handlers.
+Each new send commits its kind, group, source message/topic, payload, Telegram account
+(when supported by the adapter), random ID and document digest before sending. Before each
+upload attempt, the journaled path is re-read into an immutable byte snapshot and its
+digest checked against the original completed result. The adapter uploads those bytes with
+the original filename, so changes to the local path during peer lookup or SDK upload
+cannot change the remote payload. Direct adapter callers supplying a Path are likewise
+captured before its first await. The journal retains the path and digest for restart
+rather than serializing the snapshot. Document bytes must remain unchanged. Acknowledgment
+and generated message identity commit together, including mappings observed before RPC
+return. The adapter parses the RPC response for the matching random ID; the listener also
+accepts recovered UpdateMessageID mappings. Ordinary RPC updates are not assumed to reach
+Telethon Raw handlers.
 
 The Telegram mechanism is same-account, same-peer random-ID deduplication, described
 in [Telegram's outgoing update contract](https://core.telegram.org/api/updates#updatemessageid-updates).
@@ -46,10 +51,12 @@ can complete its first send but cannot replay an uncertain send.
 
 ## Validation
 
-Application tests use real SQLite and task files with external Telegram/Codex
-substitutes: replies and files accepted remotely before a lost response, restart,
-repeat recovery, edited reports after lost text acknowledgments, mutations during sends, missing legacy document identity, historical queue-outcome preservation, revoked access, account changes, early echoes and held human
-requests. Reference tests cover lost creation, edit, rename and pin acknowledgments.
-Focused adapter tests verify stable IDs and matching UpdateMessageID extraction.
-Live adapter evidence is recorded separately after the controlled allowed-group
-text/upload replay fixture; local substitutes alone do not prove server dedup.
+Application tests use real SQLite and task files with external Telegram/Codex substitutes:
+replies and files accepted remotely before a lost response, restart, repeat recovery,
+edited reports after lost text acknowledgments, mutations during sends and adapter
+peer/upload awaits, missing legacy document identity, historical queue-outcome
+preservation, revoked access, account changes, early echoes and held human requests.
+Reference tests cover lost creation, edit, rename and pin acknowledgments. Focused adapter
+tests verify stable IDs and matching UpdateMessageID extraction. Live adapter evidence is
+recorded separately after the controlled allowed-group text/upload replay fixture; local
+substitutes alone do not prove server dedup.
