@@ -38,6 +38,8 @@ for line in sys.stdin:
             continue
         loaded=True
         result={'thread':{'id':'chat-actual'}}
+    elif method=='thread/turns/list':
+        result={'data':[],'nextCursor':None}
     elif method=='turn/start':
         if not loaded or p['threadId']!='chat-actual':
             raise RuntimeError('wrong chat')
@@ -209,7 +211,7 @@ for line in sys.stdin:
 ''')
             codex=CodexAppServer([sys.executable,str(script)])
             self.assertEqual(await codex.observe_chat('known-chat',path),
-                {'chat_id':'known-chat','cwd':str(path),'project_id':None,'name':None})
+                {'chat_id':'known-chat','cwd':str(path),'project_id':None,'name':None,'status':None,'can_accept_direct_input':None})
             await codex.aclose()
 
 
