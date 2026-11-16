@@ -1,9 +1,16 @@
 """Durable monitoring policy, called only through Application.handle."""
+from contextlib import nullcontext
+from enum import StrEnum
 import json
 import re
 from .contracts import Blocked, MissingMessage
 
 MARKER = re.compile(r'(?<!\w)#codex(?!\w)', re.IGNORECASE)
+
+class AdmissionDisposition(StrEnum):
+    HELD = 'held'
+    IGNORED = 'ignored'
+
 
 class Monitoring:
     def __init__(self, app):
@@ -21,6 +28,10 @@ class Monitoring:
         """Unfinished external Codex work blocks every new execution owner."""
         if self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
             return True
+        return self.has_unfinished_execution()
+
+    def has_unfinished_execution(self):
+        """Known external intents may still own remote execution after a crash."""
         return any(task.get('phase') in ('creating_chat','executing')
                    for (data,) in self.app.db.execute('SELECT data FROM tasks') for task in [json.loads(data)])
 
@@ -52,10 +63,35 @@ class Monitoring:
                     request['outcome']=task
                     app.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(request),sequence))
 
-    async def handle(self, c, *, replay=False):
+    def recover_unbound(self):
+        """A claim without a bound task precedes every external task effect."""
+        app=self.app
+        with app.db:
+            for sequence,data in app.db.execute("SELECT sequence,data FROM trigger_requests WHERE status='running'").fetchall():
+                if not json.loads(data).get('task_id'):
+                    app.db.execute("UPDATE trigger_requests SET status='pending' WHERE sequence=? AND status='running'",(sequence,))
+
+    def record_recovery_outcome(self, task):
+        """Reconcile only the current claimed run; retain historical outcomes."""
+        self.update_matching_delivery_outcome(task)
+        app=self.app
+        with app.db:
+            for sequence,data in app.db.execute("SELECT sequence,data FROM trigger_requests WHERE status IN ('running','uncertain')").fetchall():
+                request=json.loads(data)
+                if request.get('task_id')!=task['task_id']: continue
+                previous=request.get('outcome',{})
+                if previous.get('run',task['run'])!=task['run']: continue
+                status='finished' if task.get('status')=='finished' else 'blocked'
+                if task.get('phase') in ('creating_chat','executing'): status='uncertain'
+                request['outcome']=task
+                app.db.execute('UPDATE trigger_requests SET status=?,data=? WHERE sequence=?',(status,json.dumps(request),sequence))
+
+    async def handle(self, c, *, replay=False, commit=True, access_checked=False):
         app=self.app
         if c['action']=='monitor_status':
-            return {'status':'monitoring','generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
+            return {'status':'monitoring','catchup_uncertainties':[dict(group_id=g,message_id=m,reason=r) for g,m,r in app.db.execute('SELECT * FROM catchup_uncertainties ORDER BY group_id,message_id')],
+                    'catchup_progress':[dict(group_id=g,cutoff=c,message_id=m) for g,c,m in app.db.execute('SELECT * FROM catchup_progress ORDER BY group_id')],
+                    'generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
                     'held_events':[dict(group_id=r[0],message_id=r[1],reason=r[2]) for r in app.db.execute('SELECT group_id,message_id,reason FROM held_events')],
                     'discovery_progress':[dict(group_id=r[0],message_id=r[1]) for r in app.db.execute('SELECT * FROM discovery_progress')],
                     'groups':[dict(group_id=r[0],cutoff=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM monitoring_groups')],
@@ -103,28 +139,33 @@ class Monitoring:
             return await self.handle({'action':'monitor_status'})
         if c['action']=='telegram_event':
             group=int(c['group_id']); message=int(c['message_id'])
-            await app._access(group)
+            if not access_checked:
+                await app._access(group)
             account=app.db.execute("SELECT value FROM settings WHERE key='monitor_account'").fetchone()
             activation=app.db.execute('SELECT cutoff,status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
             reason=None
+            disposition=AdmissionDisposition.IGNORED
             if account and activation and activation[1] in ('readiness_pending','readiness_uncertain'):
-                reason='Readiness outcome is unresolved; candidate held for reconciliation'
+                disposition=AdmissionDisposition.HELD
+                reason='Readiness outcome is unresolved; waiting for reconciliation'
             elif not account or not activation or activation[1]!='ready': reason='Monitoring is not ready for this group'
-            elif c.get('kind')!='new_message': reason='Edits and historical observations do not prove a fresh request'
+            elif c.get('kind') not in ('new_message','history_message'): reason='Edits and historical observations do not prove a fresh request'
             elif c.get('forwarded'): reason='Forwarded content is not a fresh user-authored request'
             elif c.get('edited'): reason='Edited history cannot prove the original request marker'
             elif c.get('sender_id')!=int(account[0]) or c.get('account_id')!=int(account[0]): reason='Request is not authored by the connected user'
             elif message<=activation[0]: reason='Message predates readiness'
             elif app.db.execute('SELECT 1 FROM generated_messages WHERE group_id=? AND message_id=?',(group,message)).fetchone(): reason='Integration-generated message'
-            elif app.db.execute("SELECT 1 FROM generated_sends WHERE group_id=? AND status!='confirmed'",(group,)).fetchone(): reason='Unresolved integration send; candidate held for reconciliation'
+            elif app.db.execute("SELECT 1 FROM generated_sends WHERE group_id=? AND status!='confirmed'",(group,)).fetchone():
+                disposition=AdmissionDisposition.HELD
+                reason='Unresolved integration send; waiting for reconciliation'
             marker=bool(MARKER.search(c.get('text','')))
             if reason:
-                if 'held' in reason:
-                    with app.db:
+                if disposition is AdmissionDisposition.HELD:
+                    with app.db if commit else nullcontext():
                         app.db.execute('INSERT OR IGNORE INTO held_events VALUES (?,?,?,?)',(group,message,json.dumps(c),reason))
-                return {'status':'held' if 'held' in reason else 'ignored','reason':reason}
+                return {'status':disposition.value,'reason':reason}
             # Discovery progress and admission are one commit, including harmless context messages.
-            with app.db:
+            with app.db if commit else nullcontext():
                 app.db.execute('INSERT INTO discovery_progress VALUES (?,?) ON CONFLICT(group_id) DO UPDATE SET message_id=MAX(message_id,excluded.message_id)',(group,message))
                 if marker:
                     cursor=app.db.execute('INSERT OR IGNORE INTO trigger_requests(account_id,group_id,message_id,data,status) VALUES (?,?,?,?,?)',(int(account[0]),group,message,json.dumps(c),'pending'))
@@ -171,8 +212,52 @@ class Monitoring:
                 with app.db:
                     app.db.execute('DELETE FROM held_events WHERE group_id=? AND message_id=?',(group,message))
 
+    def delivery_allowed(self, sequence):
+        """A pre-task reply retains its request's revocation boundary."""
+        row=self.app.db.execute('SELECT status FROM trigger_requests WHERE sequence=?',(sequence,)).fetchone()
+        return bool(row and row[0] != 'paused')
+
+    async def notify_blocker(self, sequence, event):
+        """Persist the source-specific outcome before its journaled Telegram effect."""
+        app=self.app
+        outcome=event['outcome']
+        text='Codex request blocked: '+str(outcome.get('reason','More information is required'))[:1400]
+        if outcome.get('status')=='project_choice':
+            choices=outcome.get('choices',[])
+            text+='\n'+ '\n'.join(f"{item['choice']}. {item['name']}"[:160] for item in choices[:10])
+            text+=f"\nSelect a project with the integration's project command: choice_id={outcome['choice_id']}, choice=<number>, group_id={event['group_id']}. Then post a fresh #codex request."
+            if len(choices)>10:
+                text+='\nMore projects are available in the returned project choices.'
+        else:
+            text+='\nResolve this blocker, then post a fresh #codex request.'
+        event['blocker_notification']={'operation_key':f'request:{sequence}:blocker','status':'pending'}
+        with app.db:
+            app.db.execute('UPDATE trigger_requests SET data=? WHERE sequence=?',(json.dumps(event),sequence))
+        try:
+            if not self.delivery_allowed(sequence):
+                raise Blocked('Request is paused after folder removal')
+            identity=await app._send_generated('text',event['group_id'],event['message_id'],text,event.get('source_topic_id'),operation_key=event['blocker_notification']['operation_key'])
+            event['blocker_notification'].update(status='confirmed',message_id=identity)
+        except Exception as exc:
+            event['blocker_notification'].update(status='blocked',reason=str(exc))
+        with app.db:
+            app.db.execute('UPDATE trigger_requests SET data=? WHERE sequence=?',(json.dumps(event),sequence))
+
+    async def reconcile_blockers(self):
+        """Bounded recovery includes the gap before an outgoing row was created."""
+        rows=self.app.db.execute("""
+            SELECT sequence,data FROM trigger_requests
+            WHERE status='blocked' AND json_extract(data,'$.task_id') IS NULL
+              AND json_extract(data,'$.outcome.status') IN ('blocked','project_choice')
+              AND COALESCE(json_extract(data,'$.blocker_notification.status'),'')!='confirmed'
+            ORDER BY sequence LIMIT 10
+        """).fetchall()
+        for sequence,data in rows:
+            await self.notify_blocker(sequence,json.loads(data))
+
     async def dispatch(self):
         app=self.app
+        await self.reconcile_blockers()
         if self.requires_recovery():
             return {'status':'blocked','reason':'A previous request is still running or requires recovery before queued work can start'}
         row=app.db.execute("SELECT sequence,group_id,message_id,data FROM trigger_requests WHERE status='pending' ORDER BY sequence LIMIT 1").fetchone()
@@ -190,12 +275,14 @@ class Monitoring:
             event['outcome']={'status':'blocked','reason':str(error)}
             with app.db:
                 app.db.execute("UPDATE trigger_requests SET status='blocked',data=? WHERE sequence=? AND status='pending'",(json.dumps(event),sequence))
+            await self.notify_blocker(sequence,event)
             return event['outcome']
         if not MARKER.search(trigger.text):
             with app.db: app.db.execute("UPDATE trigger_requests SET status='cancelled' WHERE sequence=? AND status='pending'",(sequence,))
             return {'status':'cancelled'}
+        event['source_topic_id']=trigger.topic_id
         with app.db:
-            claimed=app.db.execute("UPDATE trigger_requests SET status='running' WHERE sequence=? AND status='pending'",(sequence,)).rowcount
+            claimed=app.db.execute("UPDATE trigger_requests SET status='running',data=? WHERE sequence=? AND status='pending'",(json.dumps(event),sequence)).rowcount
         if not claimed: return {'status':'busy'}
         try:
             outcome=await app._handle(dict(action='task',group_id=group,message_id=message,scope='topic',destination='project',context_upper_bound=message,request_sequence=sequence))
@@ -210,4 +297,6 @@ class Monitoring:
                 status='uncertain'
         with app.db:
             app.db.execute("UPDATE trigger_requests SET status=CASE WHEN status='paused' THEN 'paused' ELSE ? END,data=? WHERE sequence=?",(status,json.dumps(event),sequence))
+        if status=='blocked' and not event.get('task_id'):
+            await self.notify_blocker(sequence,event)
         return outcome

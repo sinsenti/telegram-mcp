@@ -29,19 +29,19 @@ async def synchronize(app, task):
     except Exception as exc:
         state['observation'] = {'status':'failed','reason':str(exc)}
         # Metadata availability must not stall independent status/reference work.
-        app._save(task)
+        app._save_reference(task)
     name = state.get('name')
     state['title'] = {'status':'pending'}
     if name:
         desired = topic_name(name)
         state['title'] = {'status':'pending','desired':desired}
-        app._save(task)
+        app._save_reference(task)
         try:
             await app._task_access(task)
             current = await app.telegram.topic_title(group, topic)
             if current != desired:
                 state['title']['status'] = 'uncertain'
-                app._save(task)
+                app._save_reference(task)
                 await app._task_access(task)
                 await app.telegram.rename_topic(group, topic, desired)
                 await app._task_access(task)
@@ -50,7 +50,7 @@ async def synchronize(app, task):
             state['title']['status'] = 'current'
         except Exception as exc:
             state['title'].update(status='failed',reason=str(exc))
-    app._save(task)
+    app._save_reference(task)
     try:
         projects = await asyncio.to_thread(app.catalog.refresh)
         project = next((p for p in projects if p.id == task['project_id']), None)
@@ -68,15 +68,15 @@ async def synchronize(app, task):
             reference.setdefault('operation_key',f"task:{task['task_id']}:reference")
             await app._task_access(task)
             reference['status'] = 'uncertain'
-            app._save(task)  # Crash/lost acknowledgment cannot blindly duplicate a reference.
+            app._save_reference(task)  # Crash/lost acknowledgment cannot blindly duplicate a reference.
             identity = await app._send_generated('reference',group,topic,text,operation_key=reference['operation_key'])
             reference['message_id'] = str(identity)
-            app._save(task)
+            app._save_reference(task)
         await app._task_access(task)
         current = await app.telegram.reference(group, topic, identity)
         if current['text'] != text:
             reference['status'] = 'uncertain'
-            app._save(task)
+            app._save_reference(task)
             await app._task_access(task)
             await app.telegram.edit_reference(group, topic, identity, text)
             await app._task_access(task)
@@ -84,7 +84,7 @@ async def synchronize(app, task):
             if current['text'] != text:
                 raise Blocked('Reference edit was not confirmed')
         reference.update(status='current',reason=None)
-        app._save(task)
+        app._save_reference(task)
     except Exception as exc:
         reference = state.setdefault('reference', {})
         # Keep an uncertain create distinguishable from a known-ID recoverable failure.
@@ -92,10 +92,10 @@ async def synchronize(app, task):
             reference['status'] = 'failed'
         reference['reason'] = str(exc)
         state['pin'] = {'status':'pending','reason':'Reference has not been confirmed'}
-        app._save(task)
+        app._save_reference(task)
         return task
     state['pin'] = {'status':'pending'}
-    app._save(task)
+    app._save_reference(task)
     try:
         if not current.get('pinned'):
             await app._task_access(task)
@@ -107,5 +107,5 @@ async def synchronize(app, task):
         state['pin'] = {'status':'current'}
     except Exception as exc:
         state['pin'] = {'status':'failed','reason':str(exc)}
-    app._save(task)
+    app._save_reference(task)
     return task

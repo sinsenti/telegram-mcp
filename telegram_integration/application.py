@@ -25,12 +25,15 @@ class Application:
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
         self.monitor_lock = asyncio.Lock()
+        self.reference_lock = asyncio.Lock()
         from .folder_access import FolderAccess
         self.folder_access = FolderAccess(self)
         if hasattr(telegram,'set_access_guard'):
             telegram.set_access_guard(self.folder_access.check_enabled)
         from .monitoring import Monitoring
         self.monitoring = Monitoring(self)
+        from .catchup import Catchup
+        self.catchup = Catchup(self)
         from .outgoing import Outgoing
         self.outgoing = Outgoing(self)
 
@@ -41,9 +44,29 @@ class Application:
             self.db.close()
 
     def _save(self, task):
+        # Reference maintenance can run while execution owns a different snapshot.
+        row = self.db.execute("SELECT data FROM tasks WHERE id=?", (task["task_id"],)).fetchone()
+        if row and "reference_sync" in (latest := json.loads(row[0])):
+            task["reference_sync"] = latest["reference_sync"]
         self.folder_access.preserve_pause(task)
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO tasks VALUES (?, ?)', (task['task_id'], json.dumps(task)))
+
+    def _save_reference(self, task):
+        latest = self._task(task['task_id'])
+        latest['reference_sync'] = task['reference_sync']
+        self.folder_access.preserve_pause(latest)
+        with self.db:
+            self.db.execute('UPDATE tasks SET data=? WHERE id=?', (json.dumps(latest), task['task_id']))
+        task.update(latest)
+
+    async def _maintain_reference(self, task):
+        if (not task.get('project_id') or not task.get('chat_id')
+                or task.get('topic_id') is None or not hasattr(self.telegram,'create_reference')):
+            return task
+        async with self.reference_lock:
+            from .references import synchronize
+            return await synchronize(self, self._task(task['task_id']))
 
     def _task(self, task_id):
         row = self.db.execute('SELECT data FROM tasks WHERE id=?', (task_id,)).fetchone()
@@ -178,6 +201,9 @@ class Application:
         try:
             if action == 'telegram_send_ack':
                 return {'status':'confirmed' if self.outgoing.acknowledge(command['random_id'],command['message_id']) else 'unknown'}
+            if action == 'monitor_catch_up':
+                async with self.monitor_lock:
+                    return await self.catchup.discover(command)
             if action in ('monitor_enable','monitor_refresh','folder_changed','monitor_status','telegram_event'):
                 if action == 'monitor_status':
                     return await self.monitoring.handle(command)
@@ -185,6 +211,9 @@ class Application:
                     return await self.monitoring.handle(command)
             if action == 'status':
                 return self._task(command['task_id'])
+            if action in ('sync_reference','sync_references'):
+                async with self.reference_lock:
+                    return await self._handle(command)
             if self.lock.locked():
                 return {'status':'busy','reason':'Another execution owns the Codex adapter'}
             # A distinct open file description per claim gives mutual exclusion
@@ -239,6 +268,7 @@ class Application:
             self._verify_report_document(task)
         task.update(status='finished',phase='complete',reason=None)
         self._save(task)
+        task.update(await self._maintain_reference(task))
         return task
 
     async def _project(self, group, choice_id=None, choice=None):
@@ -361,6 +391,7 @@ class Application:
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO topic_tasks VALUES (?,?,?)',(group,topic,task['task_id']))
             self.db.execute('DELETE FROM topic_choices WHERE group_id=? AND topic_id=?',(group,topic))
+        task = await self._maintain_reference(task)
         return dict(task,status='linked')
 
     async def _chat_command(self, c):
@@ -421,6 +452,39 @@ class Application:
         return {'status':'unresolved','observations':observations,
                 'reason':'Project placement could not be reconciled; inspect before continuing'}
 
+    def _store_result(self, task, result):
+        folder=Path(task['folder'])
+        task.update(turn_id=result.turn_id, explanation=result.explanation,
+                    result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
+        (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
+        task['phase']='terminal_result'
+        self._save(task)
+
+    async def _finish_result(self, task, result, inputs):
+        folder=Path(task['folder'])
+        self._store_result(task,result)
+        if task.get('project_id'):
+            task['placement']=await self._placement(task)
+        (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
+        if result.status != 'completed':
+            raise Blocked(result.explanation)
+        if task.get('placement',{}).get('status') == 'unresolved':
+            raise Blocked(task['placement']['reason'])
+        validate_evidence(inputs,result.input_evidence)
+        for item in inputs:
+            owned_directory(Path(item.path).parent)
+            if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
+                raise Blocked(f'{item.original_name}: preserved original changed during execution')
+        task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
+        document = folder/f"result-{task['run']}.md"
+        document.write_text(result.markdown)
+        task['document'] = str(document)
+        task['document_sha256'] = digest(document)
+        task['reporting_version'] = 1
+        self._save(task)
+        if task.get('status') != 'paused':
+            await self._deliver_reports(task)
+
     async def _start_captured(self, task, text, inputs):
         """Initiate each external operation only after its durable intent exists."""
         await self._task_access(task)
@@ -437,6 +501,7 @@ class Application:
             raise Blocked('Codex turn start outcome needs reconciliation before another turn can start')
         task.update(phase='executing',client_request_id=str(uuid.uuid4()))
         self._save(task)
+        await self._maintain_reference(task)
         async def accepted(turn_id):
             task['turn_id']=turn_id
             self._save(task)
@@ -460,6 +525,9 @@ class Application:
             return await self._link(c)
         if action == 'chat_command':
             return await self._chat_command(c)
+        if action == 'recover':
+            from .recovery import Recovery
+            return await Recovery(self).recover(c.get('task_id'))
         if action == 'reconcile_reports':
             if not c.get('task_id'):
                 return await self.outgoing.reconcile()
@@ -550,7 +618,7 @@ class Application:
                           and task.get('phase') in ('capturing_inputs','terminal_result')
                           and not task.get('report_blocker')
                           and task.get('placement',{}).get('status') != 'unresolved')
-            paused_continuation=(task['status']=='paused' and task.get('chat_id') and task.get('phase') in ('terminal_result','reporting','complete'))
+            paused_continuation=(task['status']=='paused' and task.get('chat_id') and task.get('phase') in ('terminal_result','terminal_interrupted','terminal_failed','reporting','complete'))
             if task['status'] not in ('finished','linked') and not can_continue and not paused_continuation:
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
@@ -593,9 +661,9 @@ class Application:
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         # These fields describe only the current run. Earlier artifacts remain on disk.
         for key in ('codex_create_intent','client_request_id','turn_id','input_evidence','result_status','explanation','document',
-                    'report_ids','blocker_report_id','report_blocker','document_sha256'):
+                    'report_ids','blocker_report_id','report_blocker','document_sha256','snapshot_sha256','terminal_error'):
             task.pop(key,None)
-        task.update(status='running', reason=None, topic_id=m.topic_id)
+        task.update(status='running', reason=None, topic_id=m.topic_id, phase='capturing_inputs')
         self._save(task)
         if c.get('request_sequence') is not None:
             self.monitoring.bind_task(c['request_sequence'],task)
@@ -665,33 +733,11 @@ class Application:
             if blockers:
                 raise Blocked('; '.join(blockers))
             inputs=tuple(inputs)
+            task['snapshot_sha256']={name:digest(folder/name) for name in (f"input-{task['run']}.txt",f"context-{task['run']}.json",f"inputs-{task['run']}.json")}
+            task['phase']='captured'
+            self._save(task)
             result = await self._start_captured(task,text,inputs)
-            if task.get('project_id'):
-                task['placement']=await self._placement(task)
-            task.update(turn_id=result.turn_id, explanation=result.explanation,
-                        result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
-            (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
-            task['phase']='terminal_result'
-            self._save(task)
-            (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
-            if result.status != 'completed':
-                raise Blocked(result.explanation)
-            if task.get('placement',{}).get('status') == 'unresolved':
-                raise Blocked(task['placement']['reason'])
-            validate_evidence(inputs,result.input_evidence)
-            for item in inputs:
-                owned_directory(Path(item.path).parent)
-                if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
-                    raise Blocked(f'{item.original_name}: preserved original changed during execution')
-            task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
-            document = folder/f"result-{task['run']}.md"
-            document.write_text(result.markdown)
-            task['document'] = str(document)
-            task['document_sha256'] = digest(document)
-            task['reporting_version'] = 1
-            self._save(task)
-            if task.get('status') != 'paused':
-                await self._deliver_reports(task)
+            await self._finish_result(task,result,inputs)
         except Exception as exc:
             task.update(status='blocked', reason=str(exc))
             if task.get('phase') != 'reporting':
@@ -701,4 +747,4 @@ class Application:
                 except Exception as report_exc:
                     task['report_blocker'] = str(report_exc)
         self._save(task)
-        return task
+        return task if task['status']=='finished' else await self._maintain_reference(task)
