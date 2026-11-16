@@ -5,7 +5,7 @@ import secrets
 import uuid
 from pathlib import Path
 from .attachments import digest
-from .contracts import Blocked
+from .contracts import Blocked, FrozenDocument
 
 class Outgoing:
     def __init__(self, app):
@@ -62,8 +62,11 @@ class Outgoing:
                     or args[1].is_symlink() or digest(args[1])!=operation['sha256']):
                 raise Blocked('Pending Telegram upload changed; original payload is required')
         method=app.telegram.create_reference if kind=='reference' else getattr(app.telegram,'send_'+kind)
+        send_args=list(args)
+        if kind=='document':
+            send_args[1]=FrozenDocument.capture(args[1],operation['sha256'])
         try:
-            message=await method(group,*args,**({'random_id':operation['random_id']} if operation['replayable'] else {}))
+            message=await method(group,*send_args,**({'random_id':operation['random_id']} if operation['replayable'] else {}))
         except BaseException:
             with app.db:
                 app.db.execute("UPDATE generated_sends SET status='uncertain' WHERE id=? AND status!='confirmed'",(identity,))

@@ -21,7 +21,7 @@ class Telegram:
         self.reports.append((group_id, message_id, explanation))
         return '500'
     async def send_document(self, group_id, message_id, document, topic_id):
-        self.reports.append((group_id, message_id, document.read_text()))
+        self.reports.append((group_id, message_id, document.content.decode()))
         return '501'
 
 class Codex:

@@ -13,7 +13,7 @@ class DurableTelegram(Telegram):
     async def send_text(self, group, message, text, topic, *, random_id=None):
         return await self.send('text',group,message,text,topic,random_id)
     async def send_document(self, group, message, path, topic, *, random_id=None):
-        return await self.send('document',group,message,path.read_text(),topic,random_id)
+        return await self.send('document',group,message,path.content.decode(),topic,random_id)
     async def send(self,kind,group,message,payload,topic,random_id):
         key=(group,random_id)
         self.remote.setdefault(key,(str(500+len(self.remote)),kind,message,payload))
@@ -93,6 +93,28 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result['status'],'blocked',result)
             self.assertIn('identity',result['reason'])
             self.assertEqual(telegram.remote,{})
+            await app.close()
+
+    async def test_remote_upload_keeps_original_bytes_when_local_report_changes_during_send(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); telegram=DurableTelegram(); telegram.lose=None
+            async def mutate_then_read(group,message,document,topic,*,random_id=None):
+                next((root/'tasks').glob('*/result-1.md')).write_text('WRONG BYTES')
+                payload=document.content.decode() if hasattr(document,'content') else document.read_text()
+                return await telegram.send('document',group,message,payload,topic,random_id)
+            telegram.send_document=mutate_then_read
+            app=Application(root/'db',root/'tasks',telegram,Codex())
+            await app.handle({'action':'configure','folder_id':7})
+            first=await app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+            self.assertEqual(first['status'],'blocked',first)
+            self.assertEqual([v[3] for v in telegram.remote.values()],['Greeting prepared.','# Hello\nWelcome!'])
+            Path(first['document']).write_text('# Hello\nWelcome!')
+            await app.close()
+            app=Application(root/'db',root/'tasks',telegram,Codex())
+            result=await app.handle({'action':'reconcile_reports','task_id':first['task_id']})
+            self.assertEqual(result['status'],'finished',result)
+            self.assertEqual(len(telegram.remote),2)
+            self.assertEqual([v[3] for v in telegram.remote.values()],['Greeting prepared.','# Hello\nWelcome!'])
             await app.close()
 
     async def test_revoked_group_retains_output_until_restored(self):
