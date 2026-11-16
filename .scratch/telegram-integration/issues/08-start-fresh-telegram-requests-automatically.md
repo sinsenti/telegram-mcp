@@ -4,7 +4,7 @@
 
 **Blocked by:** 03: Read complete discussions and find tasks, 05: Route task topics into real Codex projects.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] First activation and newly enabled groups persist activation state, send readiness, and wait for fresh user requests; old markers remain readable context only.
 - [ ] Only new user-authored hashtag requests in allowed groups trigger; other authors, ordinary messages, and hashtag-adding edits do not.

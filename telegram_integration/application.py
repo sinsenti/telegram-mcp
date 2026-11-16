@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 import uuid
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from .contracts import Blocked, CodexAdapter, TelegramAdapter, TaskInput
 from .attachments import owned_directory, family, digest, validate_evidence, FAMILIES
@@ -22,6 +22,9 @@ class Application:
         self.workspace = workspace.absolute()
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
+        self.monitor_lock = asyncio.Lock()
+        from .monitoring import Monitoring
+        self.monitoring = Monitoring(self)
 
     async def close(self):
         try:
@@ -138,15 +141,42 @@ class Application:
 
     async def handle(self, command: dict) -> dict:
         """Manual commands today; later normalized listener commands use this seam."""
-        async with self.lock:
-            try:
-                return await self._handle(command)
-            except Exception as exc:
-                return {'status':'blocked', 'reason':str(exc)}
-            finally:
-                # A failed state write between chat creation and its first turn
-                # must release the unmaterialized chat's owned process too.
-                await self.codex.aclose()
+        action=command.get('action')
+        try:
+            if action in ('monitor_enable','monitor_refresh','monitor_status','telegram_event'):
+                if action == 'monitor_status':
+                    return await self.monitoring.handle(command)
+                async with self.monitor_lock:
+                    return await self.monitoring.handle(command)
+            if action == 'status':
+                return self._task(command['task_id'])
+            if self.lock.locked():
+                return {'status':'busy','reason':'Another execution owns the Codex adapter'}
+            async with self.lock:
+                try:
+                    if action == 'dispatch_pending':
+                        return await self.monitoring.dispatch()
+                    return await self._handle(command)
+                finally:
+                    await self.codex.aclose()
+        except Exception as exc:
+            return {'status':'blocked','reason':str(exc)}
+
+    async def _send_generated(self, kind, group, *args):
+        await self._access(group)
+        identity=uuid.uuid4().hex
+        with self.db:
+            self.db.execute('INSERT INTO generated_sends VALUES (?,?,?)',(identity,group,'pending'))
+        try:
+            message=await getattr(self.telegram,'send_'+kind)(group,*args)
+        except BaseException:
+            with self.db:
+                self.db.execute("UPDATE generated_sends SET status='uncertain' WHERE id=?",(identity,))
+            raise
+        with self.db:
+            self.db.execute('INSERT OR IGNORE INTO generated_messages VALUES (?,?)',(group,int(message)))
+            self.db.execute("UPDATE generated_sends SET status='confirmed' WHERE id=?",(identity,))
+        return message
 
     async def _project(self, group, choice_id=None, choice=None):
         await self._access(group)
@@ -293,6 +323,8 @@ class Application:
             if project.get('project_id') != task['project_id'] or project.get('cwd') != task['cwd']:
                 raise Blocked('Task destination differs from its group assignment')
         context = await self._context(task)
+        if c.get('context_upper_bound') is not None:
+            context = replace(context,messages=tuple(m for m in context.messages if m.message_id<=c['context_upper_bound']))
         if not context.complete:
             raise Blocked('Selected context is incomplete: '+str(context.reason or 'history unavailable'))
         m = next(m for m in context.messages if m.message_id == task['message_id'])
@@ -410,17 +442,17 @@ class Application:
             task['document'] = str(document)
             self._save(task)
             await self._access(task['group_id'])
-            task['report_ids'] = [await self.telegram.send_text(task['group_id'], task['message_id'], result.explanation, task['topic_id'])]
+            task['report_ids'] = [await self._send_generated('text',task['group_id'], task['message_id'], result.explanation, task['topic_id'])]
             self._save(task)
             await self._access(task['group_id'])
-            task['report_ids'].append(await self.telegram.send_document(task['group_id'], task['message_id'], document, task['topic_id']))
+            task['report_ids'].append(await self._send_generated('document',task['group_id'], task['message_id'], document, task['topic_id']))
             task.update(status='finished', phase='complete')
         except Exception as exc:
             task.update(status='blocked', reason=str(exc))
             if task.get('phase') != 'reporting':
                 try:
                     await self._access(task['group_id'])
-                    task['blocker_report_id'] = await self.telegram.send_text(task['group_id'], task['message_id'], 'Blocked: '+str(exc), task['topic_id'])
+                    task['blocker_report_id'] = await self._send_generated('text',task['group_id'], task['message_id'], 'Blocked: '+str(exc), task['topic_id'])
                 except Exception as report_exc:
                     task['report_blocker'] = str(report_exc)
         self._save(task)
