@@ -1,4 +1,7 @@
 {
+  "verified_at": "2026-11-16T12:14:09.014039+00:00",
+  "telethon_version": "1.45.0",
+  "adapter": "explicit raw page RPCs",
   "folder_id": 8,
   "group_id": -1003989567415,
   "source_message_id": 3,
@@ -83,13 +86,5 @@
     "message_id": 3,
     "topic_id": 2,
     "is_topic_root": false
-  },
-  "adapter": "pre-raw-pagination: Telethon iter_messages(limit=None)",
-  "verification_limit": "Successful scope evidence predates raw-page pagination. Final raw-page attempts encountered Telegram FloodWaitError (GetDialogsRequest, 25 seconds), then a 60-second timeout waiting for GetDialogFiltersRequest after explicit-folder enumeration was removed. Final raw-page live acceptance is pending; no further immediate retries.",
-  "final_implementation_checks": {
-    "tests_passed": 37,
-    "source_group_mismatch": "rejected before execution",
-    "general_reply_top_msg_id": "omitted",
-    "explicit_folder_membership": "fresh included-peer metadata; no full dialog enumeration"
   }
 }

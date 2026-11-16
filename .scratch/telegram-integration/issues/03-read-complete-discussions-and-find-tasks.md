@@ -4,14 +4,14 @@
 
 **Blocked by:** 02: Run a manual text task and report its result.
 
-**Status:** needs-info
+**Status:** resolved
 
 - [x] Message and topic links preserve their distinct scopes and validate the actual resolved group.
 - [x] Retrieve historical replies and complete topic history with full text, explicit continuation, and visible completeness; no silent truncation.
 - [x] Text search exposes multiple matches for user selection before execution.
 - [x] Reading a topic does not automatically add unrelated conversations; all further selections obey the same folder rule.
 - [x] Demonstrate the complete read/select/execute/report workflow through the shared interface for both selections, including missing-context blockers.
-- [ ] Add focused Telegram contract evidence for actual history, reply, topic, and link behavior when an authorized test account/group is available.
+- [x] Add focused Telegram contract evidence for actual history, reply, topic, and link behavior when an authorized test account/group is available.
 
 ## Comments
 
@@ -35,4 +35,8 @@ No additional Codex turn/chat, Telegram write, General-topic scan, public-group 
 
 Review fixes reject an explicitly different follow-up group before retrieval/execution, omit `top_msg_id` for General-topic text and document replies, and refresh explicit-folder/shared-chatlist membership by resolving only included peers instead of repeatedly enumerating the entire account's dialogs. Exclusions, actual peer identity, group type, and fresh membership checks remain enforced. Dynamic group filters retain their existing evaluation.
 
-Both review findings were rechecked after merge. The final root suite passes 37 tests, including the existing QR-login checks; the ticket implementation and review-fix worktree suite passes 31. Ticket 04 remains blocked until final live retrieval acceptance is recorded.
+Both review findings were rechecked after merge. The final root suite passes 37 tests, including the existing QR-login checks; the ticket implementation and review-fix worktree suite passes 31. Ticket 04 is unblocked by the final live retrieval acceptance below.
+
+## Answer
+
+Resolved after the bounded final-adapter read succeeded on 2026-11-16. The [current live evidence](../discussion-read-live-test.json) uses the explicit raw-page adapter: message scope returns IDs 3, 4, 5; topic scope returns IDs 2, 3, 4, 5; both are complete, and the private link resolves group/topic/source identities correctly. Earlier rate-limit/timeout attempts above are retained as history and are superseded by this successful final read. No new chat, turn, or Telegram write was needed. [Decision recorded in the implementation map](../map.md#decisions-so-far).

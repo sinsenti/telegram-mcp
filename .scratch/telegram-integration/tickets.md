@@ -37,9 +37,9 @@ Tickets 01 and 02 can start independently. Ticket 01 must establish a supported 
 
 ## Current implementation status
 
-Ticket 02 is resolved; ticket 01 remains `needs-info`:
+Tickets 02 and 03 are resolved; ticket 01 remains `needs-info`:
 
 - 01: the experimental standalone catalog matches all 11 existing desktop projects by name and directory. A controlled real-project change still needs to demonstrate live refresh; see [catalog evidence](../../docs/research/project-catalog.md).
 - 02: the approved live manual text task completed in one real Codex chat, and its text/Markdown replies were verified in the original Telegram topic, including a byte-for-byte file comparison; see [evidence](./manual-workflow-live-test.json).
 
-Ticket 03 is implemented and reviewed, with 37 tests passing in the root environment. Its final raw-page live read remains `needs-info` after Telegram rate limiting and a bounded folder-refresh timeout; earlier successful scope evidence is identified separately. Tickets 04–14 remain unimplemented and blocked by the graph above. The approved test created one Codex chat and two source replies; it did not authorize project renaming or unrelated test tasks. Stage 1 still requires tickets 03 and 04.
+Ticket 03 is resolved after successful bounded live reads using the final raw-page adapter. Both message-with-replies and whole-topic scopes, completeness, and private-link identities were verified; see [evidence](./discussion-read-live-test.json). Ticket 04 is now unblocked. Tickets 04–14 remain unimplemented. The approved test created one Codex chat and two source replies; subsequent checks were read-only. Project renaming and unrelated live test tasks remain unauthorized.
