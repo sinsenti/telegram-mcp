@@ -8,7 +8,6 @@ from dataclasses import asdict
 from copy import deepcopy
 
 from .contracts import Blocked, RunResult, InputEvidence
-from .attachments import validate_evidence
 
 
 _RESULT_SCHEMA = {
@@ -200,13 +199,9 @@ Mention preserved excluded inputs in the explanation and Markdown result.
             try:
                 output = json.loads(final_text or '')
                 evidence=tuple(InputEvidence(**item) for item in output.get('input_evidence',[]))
-                if inputs and output['status'] == 'blocked':
-                    return RunResult(output['explanation'],output['markdown'],turn_id,evidence,'blocked')
-                validate_evidence(inputs,evidence)
-                if output['status'] == 'blocked':
-                    raise Blocked(output['explanation'])
-                if output['status'] != 'completed' or not isinstance(output['markdown'], str):
+                if output['status'] not in ('completed','blocked') or not all(
+                    isinstance(output[key],str) for key in ('explanation','markdown')):
                     raise ValueError('invalid result')
-                return RunResult(explanation=output['explanation'], markdown=output['markdown'], turn_id=turn_id, input_evidence=evidence)
+                return RunResult(output['explanation'],output['markdown'],turn_id,evidence,output['status'])
             except (ValueError, TypeError, KeyError) as exc:
                 raise Blocked(f'Codex turn {turn_id} finished without a usable structured result; inspect the chat.') from exc

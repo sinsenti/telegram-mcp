@@ -139,21 +139,54 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn('checkpoint.pdf',payload['input'][0]['text'])
             self.assertIn('input_evidence',payload['outputSchema']['required'])
 
-    async def test_attachment_result_requires_exact_nonempty_interpretation_evidence(self):
-        from telegram_integration.contracts import TaskInput
+    async def test_application_retains_terminal_wire_result_before_evidence_policy(self):
         invalid=[[],[{'input_id':'unknown','outcome':'interpreted','evidence':'Fact'}],
-                 [{'input_id':'one','outcome':'interpreted','evidence':''}],
-                 [{'input_id':'one','outcome':'interpreted','evidence':'Fact'}]*2,
-                 [{'input_id':'one','outcome':'explicitly_unnecessary','evidence':'Model guessed'}]]
-        for evidence in invalid:
+                 [{'input_id':'10:42:a','outcome':'interpreted','evidence':''}],
+                 [{'input_id':'10:42:a','outcome':'interpreted','evidence':'Fact'}]*2,
+                 [{'input_id':'10:42:a','outcome':'explicitly_unnecessary','evidence':'Model guessed'}],
+                 [{'input_id':'10:42:a','outcome':'unreadable','evidence':'Corrupt original'}]]
+        cases=[('completed',evidence) for evidence in invalid]
+        cases.append(('blocked',[{'input_id':'10:42:a','outcome':'unreadable','evidence':'Corrupt original'}]))
+        for status,evidence in cases:
             with tempfile.TemporaryDirectory() as folder:
                 path=Path(folder)
-                output={'status':'completed','explanation':'Done','markdown':'# Summary','input_evidence':evidence}
+                output={'status':status,'explanation':'Original cannot be used','markdown':'# Summary','input_evidence':evidence}
                 server=SERVER.replace("text=json.dumps({'status':'completed','explanation':'Done.','markdown':'# Result\\n\\n42'})",'text='+repr(json.dumps(output)))
                 script=path/'server.py';script.write_text(server)
                 codex=CodexAppServer(command=[sys.executable,str(script),'success'])
-                chat=await codex.create_chat(path)
-                item=TaskInput('one',10,42,'d','note.txt','text/plain',str(path/'original.txt'),'text','hash',5)
-                with self.assertRaises(Blocked):
-                    await codex.run(chat,path,'Read',inputs=(item,))
-                await codex.aclose()
+                from telegram_integration.application import Application
+                from telegram_integration.contracts import Attachment, Context, Message
+                from test_application import Telegram
+                telegram=Telegram()
+                usable_context=telegram.context
+                async def context(group,message,scope):
+                    return Context((Message(group,message,'Read original',True,
+                        attachment=Attachment('a','note.txt')),))
+                async def download(group,message,attachment,file):
+                    file.write(b'original')
+                telegram.context=context
+                telegram.download=download
+                app=Application(path/'state.sqlite',path/'tasks',telegram,codex)
+                await app.handle({'action':'configure','folder_id':7})
+                result=await app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+                self.assertEqual(result['status'],'blocked',result)
+                self.assertEqual(result['turn_id'],'turn-actual',result)
+                self.assertEqual(result['input_evidence'],evidence)
+                self.assertEqual(result['explanation'],'Original cannot be used')
+                artifact=json.loads((Path(result['folder'])/'run-result-1.json').read_text())
+                self.assertEqual(artifact['input_evidence'],evidence)
+                self.assertEqual(artifact['markdown'],'# Summary')
+                self.assertEqual(artifact['status'],status)
+                self.assertNotIn('document',result)
+                self.assertEqual((await app.handle({'action':'status','task_id':result['task_id']}))['turn_id'],'turn-actual')
+                # Explicit new request replaces the unusable input, using the same
+                # materialized chat through the actual resume wire contract.
+                telegram.context=usable_context
+                script.write_text(SERVER)
+                again=await app.handle({'action':'followup','task_id':result['task_id'],'message_id':43})
+                self.assertEqual(again['status'],'finished',again)
+                self.assertEqual(again['chat_id'],result['chat_id'])
+                self.assertEqual(again['folder'],result['folder'])
+                self.assertEqual(again['input_evidence'],[])
+                self.assertEqual(artifact,json.loads((Path(result['folder'])/'run-result-1.json').read_text()))
+                await app.close()
