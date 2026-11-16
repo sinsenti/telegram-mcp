@@ -169,7 +169,7 @@ class CodexAppServer:
         async with self._connect(cwd) as connection:
             result = await connection.request('thread/read', {'threadId':chat_id,'includeTurns':False})
             thread=result['thread']
-            return {'chat_id':thread['id'],'cwd':thread['cwd'],'project_id':thread.get('projectId')}
+            return {'chat_id':thread['id'],'cwd':thread['cwd'],'project_id':thread.get('projectId'),'name':thread.get('name')}
 
     @asynccontextmanager
     async def _chat_connection(self, chat_id, cwd):

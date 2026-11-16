@@ -325,6 +325,18 @@ class Application:
             return await self._link(c)
         if action == 'chat_command':
             return await self._chat_command(c)
+        if action == 'sync_reference':
+            from .references import synchronize
+            return await synchronize(self, self._task(c['task_id']))
+        if action == 'sync_references':
+            from .references import synchronize
+            rows = self.db.execute('SELECT DISTINCT task_id FROM topic_tasks').fetchall()
+            results = []
+            for row in rows:
+                task = self._task(row[0])
+                if task.get('chat_id'):
+                    results.append(await synchronize(self, task))
+            return {'status':'synchronized','tasks':results}
         if action == 'status':
             return self._task(c['task_id'])
         if action == 'search':

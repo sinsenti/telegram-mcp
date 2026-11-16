@@ -191,6 +191,27 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(artifact,json.loads((Path(result['folder'])/'run-result-1.json').read_text()))
                 await app.close()
 
+    async def test_metadata_reads_canonical_name_without_loading_or_starting_turns(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)
+            script=path/'metadata.py'
+            script.write_text('''import sys,json
+from pathlib import Path
+for line in sys.stdin:
+    m=json.loads(line)
+    if 'id' not in m: continue
+    if m['method']=='initialize': result={}
+    elif m['method']=='thread/read':
+        assert m['params']=={'threadId':'known-chat','includeTurns':False}
+        result={'thread':{'id':'known-chat','cwd':str(Path.cwd()),'projectId':None,'name':None,'preview':'Do not use preview as title'}}
+    else: raise RuntimeError('Metadata observation must not load or execute chats')
+    print(json.dumps({'id':m['id'],'result':result}),flush=True)
+''')
+            codex=CodexAppServer([sys.executable,str(script)])
+            self.assertEqual(await codex.observe_chat('known-chat',path),
+                {'chat_id':'known-chat','cwd':str(path),'project_id':None,'name':None})
+            await codex.aclose()
+
 
 class ChatCatalogContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_lists_all_scoped_pages_and_legacy_metadata_without_reading_turns(self):

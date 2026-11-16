@@ -3,7 +3,7 @@ import asyncio
 import json
 
 TOOL = {'name':'telegram','description':'Manual local Telegram task commands. Task creation requires explicit destination=test or project; project choices block until selected.',
-        'inputSchema':{'type':'object','properties':{'action':{'type':'string','enum':['configure','read','search','task','followup','status','project','link','chat_command']},
+        'inputSchema':{'type':'object','properties':{'action':{'type':'string','enum':['configure','read','search','task','followup','status','project','link','chat_command','sync_reference','sync_references']},
         'folder_id':{'type':'integer'},'group_id':{'type':'integer'},'message_id':{'type':'integer'},'topic_id':{'type':'integer'},'text':{'type':'string'},
         'destination':{'type':'string','enum':['test','project']},'task_id':{'type':'string'},
         'scope':{'type':'string','enum':['message','topic']},'link':{'type':'string'},'query':{'type':'string'},
