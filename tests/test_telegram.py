@@ -9,6 +9,7 @@ from telegram_integration.contracts import Blocked
 class Client:
     def __init__(self):
         self.requests=[]
+        self.media=None
         self.filter=types.DialogFilter(id=7,title=types.TextWithEntities('Codex',[]),pinned_peers=[],include_peers=[types.InputPeerChannel(10,123)],exclude_peers=[])
     async def __call__(self, request):
         self.requests.append(request)
@@ -20,7 +21,7 @@ class Client:
     async def get_input_entity(self, group):
         return types.InputPeerChannel(10,123)
     async def get_messages(self, peer, ids):
-        return NS(id=ids,chat_id=-1000000000010,raw_text='Old task',media=None,reply_to=NS(reply_to_top_id=5,forum_topic=True,reply_to_msg_id=5),action=None)
+        return NS(id=ids,chat_id=-1000000000010,raw_text='Old task',media=self.media,reply_to=NS(reply_to_top_id=5,forum_topic=True,reply_to_msg_id=5),action=None)
     async def upload_file(self, path):
         return types.InputFile(id=1,parts=1,name='result.md',md5_checksum='')
 
@@ -53,3 +54,19 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         client.filter.exclude_peers=[types.InputPeerChannel(10,123)]
         with self.assertRaises(Blocked):
             await adapter.send_text(-1000000000010,42,'Should not send',5)
+
+    async def test_link_previews_are_text_but_real_and_unsupported_media_are_attachments(self):
+        client=Client()
+        adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        cases=[
+            (types.MessageMediaWebPage(types.WebPageEmpty(id=123)), False),
+            (types.MessageMediaPhoto(types.PhotoEmpty(id=123)), True),
+            (types.MessageMediaDocument(types.DocumentEmpty(id=123)), True),
+            (types.MessageMediaGeo(types.GeoPointEmpty()), True),
+        ]
+        for media, expected in cases:
+            with self.subTest(media=type(media).__name__):
+                client.media=media
+                selected=await adapter.message(-1000000000010,42)
+                self.assertEqual(selected.has_attachment,expected)

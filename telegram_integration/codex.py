@@ -74,6 +74,13 @@ class CodexAppServer:
     def __init__(self, command=None, timeout=600):
         self.command = command or ['codex', 'app-server', '--stdio']
         self.timeout = timeout
+        self._pending = {}
+
+    async def aclose(self):
+        """Release owned servers, including chats not yet given their first turn."""
+        pending, self._pending = self._pending, {}
+        for context, _ in pending.values():
+            await context.__aexit__(None, None, None)
 
     @asynccontextmanager
     async def _connect(self, cwd):
@@ -102,13 +109,35 @@ class CodexAppServer:
                     await process.wait()
 
     async def create_chat(self, cwd: Path) -> str:
-        async with self._connect(cwd) as connection:
+        # New threads have no resumable rollout until their first turn. Keep the
+        # owning server alive while the caller persists the returned chat ID.
+        context = self._connect(cwd)
+        connection = await context.__aenter__()
+        try:
             result = await connection.request('thread/start', {'cwd': str(cwd)})
-            return result['thread']['id']
+            chat_id = result['thread']['id']
+            self._pending[chat_id] = (context, connection)
+            return chat_id
+        except BaseException:
+            await context.__aexit__(None, None, None)
+            raise
+
+    @asynccontextmanager
+    async def _chat_connection(self, chat_id, cwd):
+        pending = self._pending.pop(chat_id, None)
+        if pending is not None:
+            context, connection = pending
+            try:
+                yield connection
+            finally:
+                await context.__aexit__(None, None, None)
+        else:
+            async with self._connect(cwd) as connection:
+                await connection.request('thread/resume', {'threadId': chat_id, 'cwd': str(cwd)})
+                yield connection
 
     async def run(self, chat_id: str, cwd: Path, prompt: str) -> RunResult:
-        async with self._connect(cwd) as connection:
-            await connection.request('thread/resume', {'threadId': chat_id, 'cwd': str(cwd)})
+        async with self._chat_connection(chat_id, cwd) as connection:
             result = await connection.request('turn/start', {
                 'threadId': chat_id,
                 'input': [{'type': 'text', 'text': prompt}],

@@ -16,8 +16,11 @@ class Application:
         self.telegram, self.codex = telegram, codex
         self.lock = asyncio.Lock()
 
-    def close(self):
-        self.db.close()
+    async def close(self):
+        try:
+            await self.codex.aclose()
+        finally:
+            self.db.close()
 
     def _save(self, task):
         with self.db:
@@ -51,6 +54,10 @@ class Application:
                 return await self._handle(command)
             except Exception as exc:
                 return {'status':'blocked', 'reason':str(exc)}
+            finally:
+                # A failed state write between chat creation and its first turn
+                # must release the unmaterialized chat's owned process too.
+                await self.codex.aclose()
 
     async def _handle(self, c):
         action = c['action']
