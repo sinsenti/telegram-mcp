@@ -483,9 +483,17 @@ asyncio.run(main())
         await self.app.close()
         self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
         groups.add(10)
-        await self.app.handle({'action':'monitor_refresh'})
+        # A stale membership read cannot reopen access before explicit refresh.
+        denied=await self.app.handle({'action':'read','group_id':10,'message_id':101})
+        self.assertEqual(denied['status'],'blocked')
+        self.assertEqual((await self.app.handle({'action':'status','task_id':result['task_id']}))['status'],'paused')
+        async def latest(group): return 150
+        self.telegram.latest_message_id=latest
+        refreshed=await self.app.handle({'action':'monitor_refresh'})
+        self.assertEqual(refreshed['groups'][0]['cutoff'],150)
+        self.assertEqual((await self.event(125))['status'],'ignored')
         self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'idle')
-        await self.event(103)
+        await self.event(151)
         continued=await self.app.handle({'action':'dispatch_pending'})
         self.assertEqual((continued['status'],continued['chat_id']),('finished',result['chat_id']),continued)
 

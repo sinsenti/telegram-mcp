@@ -21,7 +21,7 @@ class Monitoring:
         """Unfinished external Codex work blocks every new execution owner."""
         if self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
             return True
-        return any(task.get('status')=='paused' and task.get('phase') in ('creating_chat','executing')
+        return any(task.get('phase') in ('creating_chat','executing')
                    for (data,) in self.app.db.execute('SELECT data FROM tasks') for task in [json.loads(data)])
 
     def bind_task(self, sequence, task):

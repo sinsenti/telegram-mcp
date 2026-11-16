@@ -465,6 +465,10 @@ class Application:
             if task.get('phase') not in ('reporting','complete') or not task.get('document'):
                 raise Blocked('Task has no completed result awaiting reporting')
             try:
+                await self._access(task['group_id'])
+                # Explicit delivery reconciliation may release a known result
+                # after readiness; it never starts or resumes Codex work.
+                task['access_epoch']=self.folder_access.state(task['group_id'])[0]
                 await self._deliver_reports(task)
                 self.monitoring.update_matching_delivery_outcome(task)
                 return task

@@ -20,7 +20,9 @@ connection ownership cannot be represented as a successful interruption.
 Re-addition sends readiness and establishes a new fresh-message cutoff. Previously
 paused requests remain paused across restarts. A fresh request can continue the
 remembered chat once its previous execution has a known terminal result. Uncertain
-execution must be reconciled before another turn starts.
+execution must be reconciled before another turn starts. An explicit
+`reconcile_reports` command after readiness can deliver a preserved known result;
+this never restarts Codex work or unpauses old queued requests.
 
 ## Controlled live verification
 
