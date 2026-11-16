@@ -26,7 +26,7 @@ class FolderAccess:
             if previous.get('run')==task.get('run') and previous.get('interruption') and (not task.get('interruption') or task['interruption'].get('status')=='requested'):
                 task['interruption']=previous['interruption']
 
-    async def revoke(self, group):
+    async def revoke(self, group, *, interrupt=True):
         app=self.app
         epoch,enabled=self.state(group)
         with app.db:
@@ -40,8 +40,15 @@ class FolderAccess:
                 if task['group_id']==group and task.get('status') not in ('finished','linked','cancelled'):
                     task.update(status='paused',reason='Group was removed from the selected Telegram folder')
                     app._save(task); tasks.append(task)
-        for task in tasks:
-            await self.interrupt_if_revoked(task)
+        if interrupt:
+            for task in tasks:
+                await self.interrupt_if_revoked(task)
+
+    async def interrupt_group(self, group):
+        for (data,) in self.app.db.execute('SELECT data FROM tasks').fetchall():
+            task=json.loads(data)
+            if task['group_id']==group:
+                await self.interrupt_if_revoked(task)
 
     async def interrupt_if_revoked(self, task):
         if self.state(task['group_id'])[1] and task.get('access_epoch',0)==self.state(task['group_id'])[0]:
