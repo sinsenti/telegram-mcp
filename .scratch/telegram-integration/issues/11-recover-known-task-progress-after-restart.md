@@ -4,7 +4,7 @@
 
 **Blocked by:** 09: Queue requests with fixed context and withdrawal.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Reconstruct against the same real SQLite store and task folders; retain project/chat IDs, input snapshots, queue order, and progress.
 - [ ] Known completed Codex work is not rerun merely because reporting was unfinished.

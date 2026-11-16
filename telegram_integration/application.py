@@ -403,6 +403,34 @@ class Application:
         return {'status':'unresolved','observations':observations,
                 'reason':'Project placement could not be reconciled; inspect before continuing'}
 
+    async def _finish_result(self, task, result, inputs):
+        folder=Path(task['folder'])
+        task.update(turn_id=result.turn_id, explanation=result.explanation,
+                    result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
+        (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
+        task['phase']='terminal_result'
+        self._save(task)
+        if task.get('project_id'):
+            task['placement']=await self._placement(task)
+        (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
+        if result.status != 'completed':
+            raise Blocked(result.explanation)
+        if task.get('placement',{}).get('status') == 'unresolved':
+            raise Blocked(task['placement']['reason'])
+        validate_evidence(inputs,result.input_evidence)
+        for item in inputs:
+            owned_directory(Path(item.path).parent)
+            if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
+                raise Blocked(f'{item.original_name}: preserved original changed during execution')
+        task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
+        document = folder/f"result-{task['run']}.md"
+        document.write_text(result.markdown)
+        task['document'] = str(document)
+        task['document_sha256'] = digest(document)
+        task['reporting_version'] = 1
+        self._save(task)
+        await self._deliver_reports(task)
+
     async def _handle(self, c):
         action = c['action']
         if action == 'configure':
@@ -417,6 +445,9 @@ class Application:
             return await self._link(c)
         if action == 'chat_command':
             return await self._chat_command(c)
+        if action == 'recover':
+            from .recovery import Recovery
+            return await Recovery(self).recover(c.get('task_id'))
         if action == 'reconcile_reports':
             if not c.get('task_id'):
                 return await self.outgoing.reconcile()
@@ -627,31 +658,7 @@ class Application:
             prompt=text+'\n\nReturn the result as Markdown in your final answer. Identify blockers explicitly.'
             cwd=Path(task.get('cwd',task['folder']))
             result = await self.codex.run(task['chat_id'], cwd, prompt, inputs=inputs) if inputs else await self.codex.run(task['chat_id'], cwd, prompt)
-            if task.get('project_id'):
-                task['placement']=await self._placement(task)
-            task.update(turn_id=result.turn_id, explanation=result.explanation,
-                        result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
-            (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
-            task['phase']='terminal_result'
-            self._save(task)
-            (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
-            if result.status != 'completed':
-                raise Blocked(result.explanation)
-            if task.get('placement',{}).get('status') == 'unresolved':
-                raise Blocked(task['placement']['reason'])
-            validate_evidence(inputs,result.input_evidence)
-            for item in inputs:
-                owned_directory(Path(item.path).parent)
-                if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
-                    raise Blocked(f'{item.original_name}: preserved original changed during execution')
-            task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
-            document = folder/f"result-{task['run']}.md"
-            document.write_text(result.markdown)
-            task['document'] = str(document)
-            task['document_sha256'] = digest(document)
-            task['reporting_version'] = 1
-            self._save(task)
-            await self._deliver_reports(task)
+            await self._finish_result(task,result,inputs)
         except Exception as exc:
             task.update(status='blocked', reason=str(exc))
             if task.get('phase') != 'reporting':
