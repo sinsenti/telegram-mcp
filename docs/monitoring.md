@@ -32,3 +32,7 @@ No live activation, readiness message, or automatic turn was performed for ticke
 ## Current live check
 
 The user has authorized these controlled integration tests without per-test approval prompts. A scoped listener using the existing account/folder/group has announced readiness at cutoff message 32, admitted no historical requests, and synchronized test-owned references. One genuine human-authored Telegram trigger is required to finish live update/identity/automatic-continuation acceptance. Do not manufacture it through the connector; use the actual Telegram client. Stop the controlled listener once that verification and duplicate-delivery check complete.
+
+## Completed first live trigger
+
+The [human-trigger live check](../.scratch/telegram-integration/monitoring-live-test.json) passed: source 35 followed readiness cutoff 32, ran once in the existing linked chat, interpreted its preserved context input, and delivered verified replies 36–37 in the source topic. Replaying the same event returned duplicate; dispatch remained idle. The controlled listener stopped after this verification. Ticket 08 is resolved; full queue, catch-up and uncertain-outcome recovery remain the subsequent tickets.

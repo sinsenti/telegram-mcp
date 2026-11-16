@@ -4,14 +4,14 @@
 
 **Blocked by:** 03: Read complete discussions and find tasks, 05: Route task topics into real Codex projects.
 
-**Status:** needs-info
+**Status:** resolved
 
-- [ ] First activation and newly enabled groups persist activation state, send readiness, and wait for fresh user requests; old markers remain readable context only.
-- [ ] Only new user-authored hashtag requests in allowed groups trigger; other authors, ordinary messages, and hashtag-adding edits do not.
-- [ ] Duplicate trigger deliveries admit one request; integrate durable admission with discovery progress transactionally.
-- [ ] Exclude generated acknowledgments, reports, references, and file captions despite their sharing the user account; sender/outgoing flags alone are insufficient.
-- [ ] An unlinked topic creates a project chat and a linked topic continues it; run the task and return its result through the shared module.
-- [ ] Include a runnable local listener entry point, status visibility, one thin listener-envelope check, and authorized Telegram update/identity contract verification.
+- [x] First activation and newly enabled groups persist activation state, send readiness, and wait for fresh user requests; old markers remain readable context only.
+- [x] Only new user-authored hashtag requests in allowed groups trigger; other authors, ordinary messages, and hashtag-adding edits do not.
+- [x] Duplicate trigger deliveries admit one request; integrate durable admission with discovery progress transactionally.
+- [x] Exclude generated acknowledgments, reports, references, and file captions despite their sharing the user account; sender/outgoing flags alone are insufficient.
+- [x] An unlinked topic creates a project chat and a linked topic continues it; run the task and return its result through the shared module.
+- [x] Include a runnable local listener entry point, status visibility, one thin listener-envelope check, and authorized Telegram update/identity contract verification.
 
 ## Implementation evidence
 
@@ -26,3 +26,9 @@ No live monitoring activation, readiness write, or automatic Codex turn has been
 After code review, request approval for this concrete test: use the already selected folder 8 / group -1003989567415 and its approved linked topic 14, enable readiness without adding groups, inspect the durable cutoff/status, have the user post a fresh human-authored `#codex` message, observe one continuation in the existing help project/chat and its source-specific result, and replay the identical normalized envelope locally to prove no second turn. Do not post a simulated human marker through a connector. Stop the listener after this one test. Do not silently treat adapter substitutes as live identity, update-delivery, or desktop-visibility evidence.
 
 Queue/recovery details remain assigned to tickets 09–14. Uncertain sends hold candidates visibly for ticket 14; running requests left after exit are retained rather than restarted blindly. The current deployment precondition is one Application process per state directory; the listener has process ownership protection, while a separate CLI/MCP instance must not share that database concurrently.
+
+## Answer
+
+Resolved after the real user posted fresh unedited message 35 in linked topic 21 after readiness cutoff 32. [Live evidence](../monitoring-live-test.json) records exactly one admitted/completed automatic request, the retained chat/task/folder, actual interpreted context input, source-specific replies 36–37, downloaded Markdown equality, and connected desktop completed-turn readback. Replaying the same normalized event returned duplicate and subsequent dispatch idle; request count remained one and all generated sends were confirmed. Historical content and integration-produced outputs did not create jobs.
+
+The controlled listener was stopped cleanly after completion (SIGINT/exit 130); activation and completed progress remain durable. The ordinary confirmed-send race regression is fixed: held human candidates are released while known outgoing echoes stay excluded. All 91 root tests passed before this live check. Queue/catch-up/crash/interruption/action uncertainty acceptance remains assigned to tickets 09–14. [Decision recorded in the implementation map](../map.md#decisions-so-far).

@@ -23,6 +23,8 @@ The user authorized running these controlled Telegram/Codex integration tests wi
 - [Ticket 06](./issues/06-attach-topics-to-existing-codex-chats.md#answer) is resolved after real numbered existing-chat selection, invalid-choice rejection and same-chat/folder continuation. [Evidence](./linking-live-test.json).
 - [Ticket 07](./issues/07-synchronize-topic-titles-and-pinned-chat-references.md#answer) is resolved after actual desktop title observation, topic/reference/pin updates and restoration. [Evidence](./title-reference-live-test.json). Stage 2 is complete.
 
+- [Ticket 08](./issues/08-start-fresh-telegram-requests-automatically.md#answer) is resolved after actual human-trigger admission/continuation, verified delivery and duplicate replay with no second turn. [Evidence](./monitoring-live-test.json). Controlled listener stopped after verification.
+
 ## Fog
 
-- Ticket 08 listener is implemented/reviewed, 91 tests pass, and live readiness is confirmed. Waiting for the user to post a genuine Telegram #codex request to complete identity/event/automatic-continuation acceptance. Tickets 09–14 remain blocked by the graph.
+- Tickets 09 (durable serialized queue/input withdrawal) and 14 (uncertain Telegram reporting) are now unblocked. Tickets 10–13 remain behind ticket 09.

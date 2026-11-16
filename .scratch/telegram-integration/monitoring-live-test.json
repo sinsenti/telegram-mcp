@@ -1,0 +1,117 @@
+{
+  "verifiedAt": "2026-11-16T14:07:00.759679+00:00",
+  "status": "passed",
+  "folder_id": 8,
+  "group_id": -1003989567415,
+  "topic_id": 21,
+  "readiness_cutoff": 32,
+  "trigger_message_id": 35,
+  "trigger_authored_by_connected_human": true,
+  "trigger_unedited": true,
+  "admission_count": 1,
+  "queue_status": "finished",
+  "outcome": {
+    "task_id": "430aa3849f434f4b82883e865859179d",
+    "group_id": -1003989567415,
+    "topic_id": 21,
+    "project_id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+    "cwd": "/home/user/git/personal/help",
+    "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+    "folder": "/home/user/git/personal/telegram-mcp/.local/tasks/430aa3849f434f4b82883e865859179d",
+    "status": "finished",
+    "run": 2,
+    "membership": "unique_project_cwd",
+    "message_id": 35,
+    "scope": "topic",
+    "reason": null,
+    "inputs": [
+      {
+        "input_id": "-1003989567415:27:document-5465292355982633101",
+        "source_group_id": -1003989567415,
+        "source_message_id": 27,
+        "media_id": "document-5465292355982633101",
+        "original_name": "result-1.md",
+        "mime_type": "text/markdown",
+        "path": "/home/user/git/personal/telegram-mcp/.local/tasks/430aa3849f434f4b82883e865859179d/inputs/2/6/original.md",
+        "family": "text",
+        "explicitly_unnecessary": false,
+        "sha256": "87cf5209c60542434ce65a2bae788668d2a856bf683127c2933836e2372b5954",
+        "size": 31,
+        "download_status": "preserved"
+      }
+    ],
+    "phase": "complete",
+    "placement": {
+      "status": "legacy_cwd_verified_desktop_unverified",
+      "observations": [
+        {
+          "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+          "cwd": "/home/user/git/personal/help",
+          "project_id": null,
+          "name": "Telegram connection test - verified"
+        }
+      ]
+    },
+    "reference_sync": {
+      "name": "Telegram connection test - verified",
+      "observation": {
+        "status": "current"
+      },
+      "title": {
+        "status": "current",
+        "desired": "Telegram connection test - verified"
+      },
+      "desired_text": "Project: help\nChat: Telegram connection test - verified\nStatus: finished\nCodex: codex://threads/01a1e17d-73b4-7150-a085-70d68488bc88\nChat ID: 01a1e17d-73b4-7150-a085-70d68488bc88",
+      "reference": {
+        "status": "current",
+        "message_id": "29",
+        "reason": null
+      },
+      "pin": {
+        "status": "current"
+      }
+    },
+    "turn_id": "01a1e4ac-69ae-7f11-83d9-0385480e2759",
+    "explanation": "Read the required original without modifying it. No blockers.",
+    "result_status": "completed",
+    "input_evidence": [
+      {
+        "input_id": "-1003989567415:27:document-5465292355982633101",
+        "outcome": "interpreted",
+        "evidence": "original.md, paragraph 1: **LINK_CHECK**. Paragraph 2: \u201cBlockers: None.\u201d"
+      }
+    ],
+    "document": "/home/user/git/personal/telegram-mcp/.local/tasks/430aa3849f434f4b82883e865859179d/result-2.md",
+    "report_ids": [
+      "36",
+      "37"
+    ]
+  },
+  "duplicate_delivery_result": {
+    "status": "duplicate"
+  },
+  "dispatch_after_duplicate": {
+    "status": "idle"
+  },
+  "request_count_before": 1,
+  "request_count_after": 1,
+  "held_events": [],
+  "generated_send_states": [
+    "confirmed",
+    "confirmed",
+    "confirmed",
+    "confirmed",
+    "confirmed",
+    "confirmed",
+    "confirmed"
+  ],
+  "report_sha256": "b82cd3b541fbf826af743c2f4682a3f8c4fb37b6c11f6ca882f7dbc542bb6b7a",
+  "controlled_listener_stopped": true,
+  "desktop_readback": {
+    "chat_id": "01a1e17d-73b4-7150-a085-70d68488bc88",
+    "turn_id": "01a1e4ac-69ae-7f11-83d9-0385480e2759",
+    "status": "completed",
+    "cwd": "/home/user/git/personal/help",
+    "tool_scope": "One read of the preserved prior Markdown original; no project file writes"
+  }
+}
