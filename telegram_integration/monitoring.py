@@ -37,12 +37,15 @@ class Monitoring:
             groups=await app.telegram.allowed_groups(int(folder[0]))
             for group in groups:
                 row=app.db.execute('SELECT status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
-                if row and row[0]!='disabled': continue
-                cutoff=await app.telegram.latest_message_id(group)
-                with app.db:
-                    app.db.execute('INSERT OR REPLACE INTO monitoring_groups VALUES (?,?,?)',(group,cutoff,'readiness_pending'))
+                if row and row[0] not in ('disabled','readiness_pending','readiness_uncertain'): continue
+                if row and row[0] in ('readiness_pending','readiness_uncertain'):
+                    cutoff=app.db.execute('SELECT cutoff FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()[0]
+                else:
+                    cutoff=await app.telegram.latest_message_id(group)
+                    with app.db:
+                        app.db.execute('INSERT OR REPLACE INTO monitoring_groups VALUES (?,?,?)',(group,cutoff,'readiness_pending'))
                 try:
-                    ready_id=await app._send_generated('text',group,None,'Codex monitoring is ready. Post a fresh #codex request in a topic to start work.',None)
+                    ready_id=await app._send_generated('text',group,None,'Codex monitoring is ready. Post a fresh #codex request in a topic to start work.',None,operation_key=f'readiness:{group}:{cutoff}')
                 except Exception:
                     with app.db:
                         app.db.execute("UPDATE monitoring_groups SET status='readiness_uncertain' WHERE group_id=?",(group,))
@@ -61,7 +64,9 @@ class Monitoring:
             account=app.db.execute("SELECT value FROM settings WHERE key='monitor_account'").fetchone()
             activation=app.db.execute('SELECT cutoff,status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
             reason=None
-            if not account or not activation or activation[1]!='ready': reason='Monitoring is not ready for this group'
+            if account and activation and activation[1] in ('readiness_pending','readiness_uncertain'):
+                reason='Readiness outcome is unresolved; candidate held for reconciliation'
+            elif not account or not activation or activation[1]!='ready': reason='Monitoring is not ready for this group'
             elif c.get('kind')!='new_message': reason='Edits and historical observations do not prove a fresh request'
             elif c.get('forwarded'): reason='Forwarded content is not a fresh user-authored request'
             elif c.get('edited'): reason='Edited history cannot prove the original request marker'

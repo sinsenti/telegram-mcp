@@ -63,12 +63,13 @@ async def synchronize(app, task):
         reference = state.setdefault('reference', {'status':'pending'})
         identity = reference.get('message_id')
         if identity is None:
-            if reference['status'] == 'uncertain':
-                raise Blocked('Reference creation outcome is uncertain; inspect Telegram before retrying')
+            if reference['status'] == 'uncertain' and not reference.get('operation_key'):
+                raise Blocked('Legacy reference creation outcome is uncertain; inspect Telegram before retrying')
+            reference.setdefault('operation_key',f"task:{task['task_id']}:reference")
             await app._access(group)
             reference['status'] = 'uncertain'
             app._save(task)  # Crash/lost acknowledgment cannot blindly duplicate a reference.
-            identity = await app._send_generated('reference',group,topic,text)
+            identity = await app._send_generated('reference',group,topic,text,operation_key=reference['operation_key'])
             reference['message_id'] = str(identity)
             app._save(task)
         await app._access(group)

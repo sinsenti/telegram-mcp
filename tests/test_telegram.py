@@ -255,3 +255,25 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any(isinstance(r,functions.messages.UpdatePinnedMessageRequest) and r.id==42 and r.silent for r in requests))
         client.filter.include_peers=[]
         with self.assertRaises(Blocked): await adapter.pin_reference(-1000000000010,5,'42')
+
+    async def test_stable_send_identity_matches_rpc_mapping_and_not_unrelated_mapping(self):
+        client=Client(); adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        acknowledged=[]
+        adapter.set_outgoing_observer(lambda random_id,message: acknowledged.append((random_id,message)))
+        original=client.__class__.__call__
+        class MappedClient(Client):
+            async def __call__(self,request):
+                if isinstance(request,(functions.messages.SendMessageRequest,functions.messages.SendMediaRequest)):
+                    self.requests.append(request)
+                    return NS(updates=[types.UpdateMessageID(id=999,random_id=123),types.UpdateMessageID(id=501,random_id=request.random_id)])
+                return await original(self,request)
+        client.__class__=MappedClient
+        for _ in range(2):
+            self.assertEqual(await adapter.send_text(-1000000000010,42,'controlled result',5,random_id=456),'501')
+        with tempfile.TemporaryDirectory() as directory:
+            document=Path(directory)/'result.md'; document.write_text('Result')
+            self.assertEqual(await adapter.send_document(-1000000000010,42,document,5,random_id=789),'501')
+        self.assertEqual(acknowledged,[(456,501),(456,501),(789,501)])
+        sends=[r for r in client.requests if isinstance(r,(functions.messages.SendMessageRequest,functions.messages.SendMediaRequest))]
+        self.assertEqual([r.random_id for r in sends],[456,456,789])

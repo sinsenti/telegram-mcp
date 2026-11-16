@@ -4,7 +4,7 @@
 
 **Blocked by:** 08: Start fresh Telegram requests automatically.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Retain durable source destinations, outgoing operation identities, acknowledgments, and integration-generated message identities.
 - [ ] Inject remote success plus lost acknowledgment for replies, uploads, and reference changes; reconcile using mechanisms verified in the Telegram adapter.

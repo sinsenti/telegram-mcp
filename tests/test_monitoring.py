@@ -199,3 +199,61 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.event(102))['status'],'duplicate')
         self.assertEqual(result['reference_sync']['reference']['message_id'],'203')
         self.assertEqual((await self.event(203))['reason'],'Integration-generated message')
+
+    async def test_reconciliation_releases_human_once_and_excludes_early_generated_echo(self):
+        from telegram_integration.application import Application
+        from telegram_integration.contracts import Message, Context, RunResult
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        async def context(group,identity,scope): return Context((await message(group,identity),))
+        self.telegram.message=message; self.telegram.context=context
+        async def run(*args,**kwargs):
+            self.codex.runs.append(args)
+            return RunResult('Result quoting #codex','Document','turn')
+        self.codex.run=run
+        await self.app.handle({'action':'monitor_enable'})
+        remote={}; lose=True
+        async def send(group,source,text,topic,*,random_id=None):
+            nonlocal lose
+            remote.setdefault(random_id,'201')
+            if lose:
+                self.assertEqual((await self.event(201))['status'],'held')
+                self.assertEqual((await self.event(102))['status'],'held')
+                lose=False
+                raise TimeoutError('remote success with lost ack')
+            return remote[random_id]
+        self.telegram.send_text=send
+        await self.event(101)
+        first=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual(first['status'],'blocked')
+        await self.app.close()
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        result=await self.app.handle({'action':'reconcile_reports','task_id':first['task_id']})
+        self.assertEqual(result['status'],'finished')
+        status=await self.app.handle({'action':'monitor_status'})
+        self.assertEqual([r['message_id'] for r in status['requests']],[101,102])
+        self.assertEqual(status['held_events'],[])
+        self.assertEqual((await self.event(102))['status'],'duplicate')
+        self.assertEqual((await self.event(201))['status'],'ignored')
+        self.assertEqual(len(remote),1)
+        self.assertEqual(len(self.codex.runs),1)
+
+    async def test_lost_readiness_ack_preserves_cutoff_and_later_human_request(self):
+        from telegram_integration.application import Application
+        remote={}; lose=True
+        async def send(group,message,text,topic,*,random_id=None):
+            nonlocal lose
+            remote.setdefault(random_id,'101')
+            if lose:
+                lose=False
+                raise TimeoutError('ready was delivered; response lost')
+            return remote[random_id]
+        self.telegram.send_text=send
+        self.assertEqual((await self.app.handle({'action':'monitor_enable'}))['status'],'blocked')
+        self.assertEqual((await self.event(102))['status'],'held')
+        await self.app.close()
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        result=await self.app.handle({'action':'monitor_refresh'})
+        self.assertEqual(result['groups'],[{'group_id':10,'cutoff':101,'status':'ready'}])
+        result=await self.app.handle({'action':'monitor_status'})
+        self.assertEqual([r['message_id'] for r in result['requests']],[102])
+        self.assertEqual(len(remote),1)

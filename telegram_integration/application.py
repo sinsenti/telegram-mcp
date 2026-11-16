@@ -25,6 +25,8 @@ class Application:
         self.monitor_lock = asyncio.Lock()
         from .monitoring import Monitoring
         self.monitoring = Monitoring(self)
+        from .outgoing import Outgoing
+        self.outgoing = Outgoing(self)
 
     async def close(self):
         try:
@@ -157,6 +159,8 @@ class Application:
         """Manual commands, normalized listener events, and worker dispatch share this seam."""
         action=command.get('action')
         try:
+            if action == 'telegram_send_ack':
+                return {'status':'confirmed' if self.outgoing.acknowledge(command['random_id'],command['message_id']) else 'unknown'}
             if action in ('monitor_enable','monitor_refresh','monitor_status','telegram_event'):
                 if action == 'monitor_status':
                     return await self.monitoring.handle(command)
@@ -176,22 +180,19 @@ class Application:
         except Exception as exc:
             return {'status':'blocked','reason':str(exc)}
 
-    async def _send_generated(self, kind, group, *args):
-        await self._access(group)
-        identity=uuid.uuid4().hex
-        with self.db:
-            self.db.execute('INSERT INTO generated_sends VALUES (?,?,?)',(identity,group,'pending'))
-        try:
-            method=self.telegram.create_reference if kind=='reference' else getattr(self.telegram,'send_'+kind)
-            message=await method(group,*args)
-        except BaseException:
-            with self.db:
-                self.db.execute("UPDATE generated_sends SET status='uncertain' WHERE id=?",(identity,))
-            raise
-        with self.db:
-            self.db.execute('INSERT OR IGNORE INTO generated_messages VALUES (?,?)',(group,int(message)))
-            self.db.execute("UPDATE generated_sends SET status='confirmed' WHERE id=?",(identity,))
-        return message
+    async def _send_generated(self, kind, group, *args, operation_key=None):
+        return await self.outgoing.send(kind,group,args,operation_key)
+
+    async def _deliver_reports(self, task):
+        prefix=f"task:{task['task_id']}:run:{task['run']}"
+        if not task.get('report_ids'):
+            task['report_ids']=[await self._send_generated('text',task['group_id'],task['message_id'],task['explanation'],task['topic_id'],operation_key=prefix+':text')]
+            self._save(task)
+        if len(task['report_ids'])<2:
+            task['report_ids'].append(await self._send_generated('document',task['group_id'],task['message_id'],Path(task['document']),task['topic_id'],operation_key=prefix+':document'))
+        task.update(status='finished',phase='complete',reason=None)
+        self._save(task)
+        return task
 
     async def _project(self, group, choice_id=None, choice=None):
         await self._access(group)
@@ -384,6 +385,18 @@ class Application:
             return await self._link(c)
         if action == 'chat_command':
             return await self._chat_command(c)
+        if action == 'reconcile_reports':
+            if not c.get('task_id'):
+                return await self.outgoing.reconcile()
+            task=self._task(c['task_id'])
+            if task.get('phase') not in ('reporting','complete') or not task.get('document'):
+                raise Blocked('Task has no completed result awaiting reporting')
+            try:
+                return await self._deliver_reports(task)
+            except Exception as exc:
+                task.update(status='blocked',reason=str(exc))
+                self._save(task)
+                return task
         if action == 'sync_reference':
             from .references import synchronize
             return await synchronize(self, self._task(c['task_id']))
@@ -594,12 +607,7 @@ class Application:
             document.write_text(result.markdown)
             task['document'] = str(document)
             self._save(task)
-            await self._access(task['group_id'])
-            task['report_ids'] = [await self._send_generated('text',task['group_id'], task['message_id'], result.explanation, task['topic_id'])]
-            self._save(task)
-            await self._access(task['group_id'])
-            task['report_ids'].append(await self._send_generated('document',task['group_id'], task['message_id'], document, task['topic_id']))
-            task.update(status='finished', phase='complete')
+            await self._deliver_reports(task)
         except Exception as exc:
             task.update(status='blocked', reason=str(exc))
             if task.get('phase') != 'reporting':

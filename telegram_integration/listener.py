@@ -5,7 +5,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, types
 from .application import Application
 from .catalog import CodexProjectCatalog
 from .codex import CodexAppServer
@@ -31,6 +31,10 @@ async def listen(application, client, *, sync_references=False):
         await ready.wait()
         outcome=await deliver(application,event,account,'edited_message')
         print(json.dumps(outcome,ensure_ascii=False),flush=True)
+    async def mapping(update):
+        if isinstance(update,types.UpdateMessageID):
+            await application.handle({'action':'telegram_send_ack','random_id':update.random_id,'message_id':update.id})
+    client.add_event_handler(mapping,events.Raw())
     client.add_event_handler(receive,events.NewMessage())
     client.add_event_handler(edited,events.MessageEdited())
     async def worker():
@@ -58,6 +62,7 @@ async def listen(application, client, *, sync_references=False):
     finally:
         for task in tasks: task.cancel()
         await asyncio.gather(*tasks,return_exceptions=True)
+        client.remove_event_handler(mapping)
         client.remove_event_handler(receive)
         client.remove_event_handler(edited)
 
