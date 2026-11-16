@@ -226,10 +226,12 @@ class Application:
             self._verify_report_document(task)
         prefix=f"task:{task['task_id']}:run:{task['run']}"
         if not task.get('report_ids'):
+            await self._task_access(task)
             task['report_ids']=[await self._send_generated('text',task['group_id'],task['message_id'],task['explanation'],task['topic_id'],operation_key=prefix+':text')]
             self._save(task)
             self._verify_report_document(task)
         if len(task['report_ids'])<2:
+            await self._task_access(task)
             self._verify_report_document(task)
             task['report_ids'].append(await self._send_generated('document',task['group_id'],task['message_id'],Path(task['document']),task['topic_id'],operation_key=prefix+':document',document_sha256=task['document_sha256']))
             self._verify_report_document(task)

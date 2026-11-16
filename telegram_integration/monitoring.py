@@ -19,7 +19,10 @@ class Monitoring:
 
     def requires_recovery(self):
         """Unfinished external Codex work blocks every new execution owner."""
-        return self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone() is not None
+        if self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
+            return True
+        return any(task.get('status')=='paused' and task.get('phase') in ('creating_chat','executing')
+                   for (data,) in self.app.db.execute('SELECT data FROM tasks') for task in [json.loads(data)])
 
     def bind_task(self, sequence, task):
         """Persist the claimed request's task before any external task effect."""
@@ -85,10 +88,10 @@ class Monitoring:
                     ready_id=await app._send_generated('text',group,None,'Codex monitoring is ready. Post a fresh #codex request in a topic to start work.',None,operation_key=f'readiness:{group}:{cutoff}')
                 except Exception:
                     with app.db:
-                        app.db.execute("UPDATE monitoring_groups SET status='readiness_uncertain' WHERE group_id=?",(group,))
+                        app.db.execute("UPDATE monitoring_groups SET status='readiness_uncertain' WHERE group_id=? AND status!='disabled'",(group,))
                     raise
                 with app.db:
-                    app.db.execute("UPDATE monitoring_groups SET status='ready', cutoff=MAX(cutoff,?) WHERE group_id=?",(int(ready_id),group))
+                    app.db.execute("UPDATE monitoring_groups SET status='ready', cutoff=MAX(cutoff,?) WHERE group_id=? AND status!='disabled'",(int(ready_id),group))
             with app.db:
                 for (group,) in app.db.execute('SELECT group_id FROM monitoring_groups').fetchall():
                     if group not in groups:
