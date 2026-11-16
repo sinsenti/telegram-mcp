@@ -41,6 +41,60 @@ class RecoveryTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(telegram.remote),2)
                 await app.close()
 
+    async def test_lost_text_ack_does_not_upload_changed_result_after_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); telegram=DurableTelegram(); codex=Codex()
+            app=Application(root/'db',root/'tasks',telegram,codex)
+            await app.handle({'action':'configure','folder_id':7})
+            first=await app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+            original=Path(first['document']).read_text()
+            Path(first['document']).write_text('Different local report')
+            await app.close()
+            app=Application(root/'db',root/'tasks',telegram,codex)
+            result=await app.handle({'action':'reconcile_reports','task_id':first['task_id']})
+            self.assertEqual(result['status'],'blocked',result)
+            self.assertEqual([v[1] for v in telegram.remote.values()],['text'])
+            self.assertEqual(len(codex.runs),1)
+            # Restoring the original completed bytes permits normal recovery.
+            Path(first['document']).write_text(original)
+            recovered=await app.handle({'action':'reconcile_reports','task_id':first['task_id']})
+            self.assertEqual(recovered['status'],'finished',recovered)
+            self.assertEqual([v[3] for v in telegram.remote.values()],['Greeting prepared.','# Hello\nWelcome!'])
+            await app.close()
+
+    async def test_mutation_during_explanation_send_blocks_document_upload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); telegram=DurableTelegram(); telegram.lose=None
+            original_send=telegram.send_text
+            async def mutate(*args,**kwargs):
+                result=await original_send(*args,**kwargs)
+                next((root/'tasks').glob('*/result-1.md')).write_text('Altered during send')
+                return result
+            telegram.send_text=mutate
+            app=Application(root/'db',root/'tasks',telegram,Codex())
+            await app.handle({'action':'configure','folder_id':7})
+            result=await app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+            self.assertEqual(result['status'],'blocked',result)
+            self.assertEqual([v[1] for v in telegram.remote.values()],['text'])
+            await app.close()
+
+    async def test_partial_legacy_report_without_original_document_identity_blocks(self):
+        import json
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory); telegram=DurableTelegram(); app=Application(root/'db',root/'tasks',telegram,Codex())
+            await app.handle({'action':'configure','folder_id':7})
+            document=root/'old.md'; document.write_text('Current bytes cannot prove original result')
+            legacy=dict(task_id='old',group_id=10,message_id=42,topic_id=None,run=1,
+                        status='blocked',phase='reporting',explanation='Known work',document=str(document),
+                        reporting_version=1,report_ids=['500'])
+            with app.db:
+                app.db.execute('INSERT INTO tasks VALUES (?,?)',('old',json.dumps(legacy)))
+            result=await app.handle({'action':'reconcile_reports','task_id':'old'})
+            self.assertEqual(result['status'],'blocked',result)
+            self.assertIn('identity',result['reason'])
+            self.assertEqual(telegram.remote,{})
+            await app.close()
+
     async def test_revoked_group_retains_output_until_restored(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory); telegram=DurableTelegram(); codex=Codex()

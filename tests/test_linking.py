@@ -92,6 +92,33 @@ class LinkingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['status'],'finished',result)
         self.assertEqual(result['placement']['status'],'legacy_cwd_verified_desktop_unverified')
 
+    async def test_direct_observation_overrides_stale_legacy_chat_listing(self):
+        self.chats[0]['project_id']=None
+        choices=await self.link()
+        selected=await self.link(choice_id=choices['choice_id'],choice=1)
+        for changed in ({'project_id':'foreign'}, {'cwd':str(self.root)}):
+            async def observe(chat,cwd):
+                return dict(dict(chat_id=chat,cwd=str(cwd),project_id=None),**changed)
+            self.codex.observe_chat=observe
+            result=await self.task()
+            self.assertEqual(result['status'],'blocked',result)
+            self.assertEqual(self.codex.runs,[])
+            self.assertEqual(await self.app.handle(dict(action='status',task_id=selected['task_id'])),selected)
+
+    async def test_legacy_null_observation_requires_current_unique_cwd(self):
+        from telegram_integration.catalog import CodexProject
+        self.chats[0]['project_id']=None
+        choices=await self.link()
+        await self.link(choice_id=choices['choice_id'],choice=1)
+        self.catalog.projects += (CodexProject('shared','shared',(self.project,)),)
+        # A stale canonical listing must not legitimize ambiguous direct metadata.
+        self.chats[0]['project_id']='server-help'
+        async def observe(chat,cwd): return dict(chat_id=chat,cwd=str(cwd),project_id=None)
+        self.codex.observe_chat=observe
+        result=await self.task()
+        self.assertEqual(result['status'],'blocked',result)
+        self.assertEqual(self.codex.runs,[])
+
     async def test_access_removal_and_replaced_number_list_block_old_choice(self):
         choices=await self.link()
         await self.link()
