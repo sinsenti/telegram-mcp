@@ -228,3 +228,86 @@ class KnownRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((second['task_id'],second['chat_id'],second['run']),(task['task_id'],task['chat_id'],2))
         self.assertEqual(len(self.codex.created),1)
         self.assertEqual(len(self.codex.runs),2)
+
+    async def test_paused_known_turn_can_be_observed_without_reporting_or_resuming(self):
+        from types import SimpleNamespace
+        from telegram_integration.contracts import RunResult
+        async def lost(chat,cwd,prompt,**kwargs):
+            await kwargs['on_turn_accepted']('paused-turn')
+            self.codex.runs.append((chat,cwd,prompt))
+            raise ConnectionError('completion connection lost')
+        self.codex.run=lost
+        first=await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        self.telegram.allowed.clear()
+        await self.app.handle(dict(action='read',group_id=10,message_id=42))
+        paused=await self.app.handle({'action':'status','task_id':first['task_id']})
+        self.assertEqual(paused['status'],'paused',paused)
+        before=dict(self.telegram.remote)
+        async def observe(chat,cwd,turn):
+            return SimpleNamespace(turn_id=turn,status='completed',result=RunResult('Recovered','Paused output',turn),reason=None)
+        self.codex.observe_turn=observe
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        task=result['tasks'][0]
+        self.assertEqual((task['status'],task['phase']),('paused','terminal_result'),task)
+        self.assertEqual(self.telegram.remote,before)
+        self.assertEqual(len(self.codex.runs),1)
+        self.assertTrue((Path(task['folder'])/'run-result-1.json').is_file())
+        self.telegram.allowed.add(10)
+        await self.app.handle({'action':'recover'})
+        self.assertEqual((await self.app.handle({'action':'status','task_id':task['task_id']}))['status'],'paused')
+        self.assertEqual(self.telegram.remote,before)
+
+    async def test_captured_attachment_retains_original_file_and_evidence_after_restart(self):
+        import asyncio
+        from telegram_integration.contracts import Attachment, Context, Message, RunResult, InputEvidence
+        self.telegram.lose=None
+        async def context(group,identity,scope):
+            return Context((Message(group,identity,'Read preserved code',True,2,attachment=Attachment('input','note.txt')),))
+        async def download(group,identity,attachment,stream): stream.write(b'Original code: 739')
+        self.telegram.context=context; self.telegram.download=download
+        crash=True
+        async def allowed(folder):
+            if crash and list((self.root/'tasks').glob('*/inputs-1.json')): raise asyncio.CancelledError()
+            return {10}
+        self.telegram.allowed_groups=allowed
+        with self.assertRaises(asyncio.CancelledError):
+            await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        original=next((self.root/'tasks').glob('*/inputs/1/0/original.txt'))
+        original_bytes=original.read_bytes()
+        crash=False
+        async def no_download(*args): raise AssertionError('Captured originals must not be downloaded again')
+        self.telegram.download=no_download
+        async def run(chat,cwd,prompt,inputs=(),**kwargs):
+            await kwargs['on_turn_accepted']('attachment-turn')
+            self.assertEqual((inputs[0].path,Path(inputs[0].path).read_bytes()),(str(original),b'Original code: 739'))
+            self.codex.runs.append((chat,cwd,prompt))
+            return RunResult('Read code','Code 739','attachment-turn',(InputEvidence(inputs[0].input_id,'interpreted','Line 1: Original code: 739'),))
+        self.codex.run=run
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'finished',result)
+        self.assertEqual(original.read_bytes(),original_bytes)
+        self.assertEqual(result['tasks'][0]['input_evidence'][0]['evidence'],'Line 1: Original code: 739')
+        self.assertEqual(len(self.codex.runs),1)
+
+    async def test_known_created_chat_continues_snapshot_without_creating_replacement(self):
+        import asyncio
+        self.telegram.lose=None
+        create=self.codex.create_chat; known=False; crash=True
+        async def created(cwd):
+            nonlocal known
+            identity=await create(cwd); known=True; return identity
+        async def allowed(folder):
+            if known and crash: raise asyncio.CancelledError()
+            return {10}
+        self.codex.create_chat=created; self.telegram.allowed_groups=allowed
+        with self.assertRaises(asyncio.CancelledError):
+            await self.app.handle(dict(action='task',destination='test',group_id=10,message_id=42))
+        crash=False
+        await self.restart()
+        result=await self.app.handle({'action':'recover'})
+        self.assertEqual(result['tasks'][0]['status'],'finished',result)
+        self.assertEqual(result['tasks'][0]['chat_id'],'chat-actual-123')
+        self.assertEqual(len(self.codex.chats),1)
+        self.assertEqual(len(self.codex.runs),1)

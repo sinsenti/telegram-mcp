@@ -79,11 +79,14 @@ class Recovery:
             if task.get('status')=='paused': return await self.paused(task)
             if phase in ('reporting','complete'):
                 return await app._handle({'action':'reconcile_reports','task_id':task['task_id']})
-            await app._access(task['group_id'])
+            await app._task_access(task)
+            if phase == 'creating_chat' and task.get('chat_id') and not task.get('client_request_id'):
+                # The create response was committed; only the known chat may run.
+                task['phase']=phase='captured'; app._save(task)
             if phase == 'captured':
                 if app.monitoring.has_unfinished_execution():
                     raise Blocked('Another external execution remains unresolved; captured work is retained')
-                if task.get('codex_create_intent') or task.get('client_request_id'):
+                if (task.get('codex_create_intent') and not task.get('chat_id')) or task.get('client_request_id'):
                     raise Blocked('Captured work has an external intent; reconcile it before continuing')
                 text=self.snapshot(task); inputs=self.inputs(task)
                 app._validate_topic_binding(task)
