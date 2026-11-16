@@ -69,6 +69,49 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('later instruction',prompts[0])
         self.assertEqual((await self.event(201))['reason'],'Integration-generated message')
 
+    async def test_successful_report_releases_held_human_request_without_self_trigger(self):
+        from telegram_integration.contracts import Message, Context, RunResult
+        async def message(group, identity): return Message(group,identity,'#codex greet',topic_id=2)
+        async def context(group, identity, scope): return Context((await message(group,identity),))
+        self.telegram.message=message; self.telegram.context=context
+        turn_started=asyncio.Event(); finish_turn=asyncio.Event()
+        send_started=asyncio.Event(); finish_send=asyncio.Event(); closed=[]
+        async def run(chat,cwd,prompt,**kwargs):
+            self.codex.runs.append((chat,cwd)); turn_started.set()
+            await finish_turn.wait()
+            return RunResult('Done','Result quoting #codex','turn')
+        async def close(): closed.append(True)
+        self.codex.run=run; self.codex.aclose=close
+        await self.app.handle({'action':'monitor_enable'})
+        async def slow_send(*args):
+            send_started.set(); await finish_send.wait(); return '201'
+        self.telegram.send_text=slow_send
+        await self.event()
+        worker=asyncio.create_task(self.app.handle({'action':'dispatch_pending'}))
+        try:
+            await asyncio.wait_for(turn_started.wait(),1)
+            finish_turn.set()
+            await asyncio.wait_for(send_started.wait(),1)
+            self.assertEqual((await asyncio.wait_for(self.event(102),1))['status'],'held')
+            self.assertEqual((await self.event(201))['status'],'held')
+            ordinary=dict(action='telegram_event',kind='new_message',group_id=10,message_id=103,
+                          sender_id=77,account_id=77,text='ordinary context')
+            self.assertEqual((await self.app.handle(ordinary))['status'],'held')
+            self.assertEqual((await self.app.handle(dict(ordinary,message_id=104,kind='edit',text='#codex')))['status'],'ignored')
+            self.assertEqual(closed,[])
+            finish_send.set()
+            self.assertEqual((await asyncio.wait_for(worker,1))['status'],'finished')
+            status=await self.app.handle({'action':'monitor_status'})
+            self.assertEqual([(r['message_id'],r['status']) for r in status['requests']],[(101,'finished'),(102,'pending')])
+            self.assertEqual(status['held_events'],[])
+            self.assertEqual((await self.event(102))['status'],'duplicate')
+            self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'finished')
+            self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'idle')
+            self.assertEqual(len(self.codex.runs),2)
+        finally:
+            finish_turn.set(); finish_send.set()
+            await worker
+
     async def test_uncertain_send_holds_self_echo_instead_of_recursing(self):
         await self.app.handle({'action':'monitor_enable'})
         async def failed(*args): raise TimeoutError('unknown send result')
@@ -76,6 +119,13 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         # Test uncertain report on an active ready group through public task seam.
         await self.app.handle({'action':'task','destination':'project','group_id':10,'message_id':3})
         self.assertEqual((await self.event())['status'],'held')
+        # A later confirmed send does not resolve the earlier unknown outcome.
+        async def success(*args): return '202'
+        self.telegram.send_text=success
+        await self.app.handle({'action':'task','destination':'project','group_id':10,'message_id':3})
+        status=await self.app.handle({'action':'monitor_status'})
+        self.assertEqual(status['requests'],[])
+        self.assertEqual([r['message_id'] for r in status['held_events']],[101])
     async def test_new_group_requires_readiness_and_removal_pauses_pending_work(self):
         groups={10}
         async def allowed(folder): return groups.copy()
@@ -125,13 +175,27 @@ class MonitoringTests(unittest.IsolatedAsyncioTestCase):
         async def observe(chat,cwd): return dict(chat_id=chat,cwd=str(cwd),project_id='server-help',name=self.title)
         async def topic(group,identity): return self.topic
         async def rename(group,identity,title): self.topic=title
-        async def create(group,identity,text): self.references['203']=text; return '203'
+        send_started=asyncio.Event(); finish_send=asyncio.Event()
+        async def create(group,identity,text):
+            send_started.set(); await finish_send.wait()
+            self.references['203']=text; return '203'
         async def reference(group,topic,identity): return dict(text=self.references[identity],pinned=self.pinned)
         async def pin(group,topic,identity): self.pinned=True
         self.codex.observe_chat=observe; self.telegram.topic_title=topic; self.telegram.rename_topic=rename
         self.telegram.create_reference=create; self.telegram.reference=reference; self.telegram.pin_reference=pin
         await self.app.handle({'action':'monitor_enable'})
         task=await self.app.handle(dict(action='task',destination='project',group_id=10,message_id=3))
-        result=await self.app.handle(dict(action='sync_reference',task_id=task['task_id']))
+        worker=asyncio.create_task(self.app.handle(dict(action='sync_reference',task_id=task['task_id'])))
+        try:
+            await asyncio.wait_for(send_started.wait(),1)
+            self.assertEqual((await asyncio.wait_for(self.event(102),1))['status'],'held')
+            self.assertEqual((await self.event(203))['status'],'held')
+        finally:
+            finish_send.set()
+            result=await asyncio.wait_for(worker,1)
+        status=await self.app.handle({'action':'monitor_status'})
+        self.assertEqual([(r['message_id'],r['status']) for r in status['requests']],[(102,'pending')])
+        self.assertEqual(status['held_events'],[])
+        self.assertEqual((await self.event(102))['status'],'duplicate')
         self.assertEqual(result['reference_sync']['reference']['message_id'],'203')
         self.assertEqual((await self.event(203))['reason'],'Integration-generated message')

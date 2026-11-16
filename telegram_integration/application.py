@@ -140,6 +140,20 @@ class Application:
                     text='\n\n'.join(m['text'] for m in messages),has_attachment=any(m['has_attachment'] for m in messages))
 
     async def handle(self, command: dict) -> dict:
+        """Keep held-event admission outside execution and monitoring ownership."""
+        if command.get('action') in ('monitor_status','status'):
+            return await self._command(command)
+        try:
+            return await self._command(command)
+        finally:
+            # A nested send may have run under monitor_lock (readiness/chat commands).
+            # Revisit only after its owner exits; never acquire execution ownership or
+            # close the adapter when admitting held requests for an active worker.
+            if not self.monitor_lock.locked():
+                async with self.monitor_lock:
+                    await self.monitoring.release_confirmed()
+
+    async def _command(self, command: dict) -> dict:
         """Manual commands, normalized listener events, and worker dispatch share this seam."""
         action=command.get('action')
         try:

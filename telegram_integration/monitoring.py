@@ -17,7 +17,7 @@ class Monitoring:
             CREATE TABLE IF NOT EXISTS generated_sends (id TEXT PRIMARY KEY, group_id INTEGER, status TEXT);
         ''')
 
-    async def handle(self, c):
+    async def handle(self, c, *, replay=False):
         app=self.app
         if c['action']=='monitor_status':
             return {'status':'monitoring','generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
@@ -73,7 +73,7 @@ class Monitoring:
             if reason:
                 if 'held' in reason:
                     with app.db:
-                        app.db.execute('INSERT OR REPLACE INTO held_events VALUES (?,?,?,?)',(group,message,json.dumps(c),reason))
+                        app.db.execute('INSERT OR IGNORE INTO held_events VALUES (?,?,?,?)',(group,message,json.dumps(c),reason))
                 return {'status':'held' if 'held' in reason else 'ignored','reason':reason}
             # Discovery progress and admission are one commit, including harmless context messages.
             with app.db:
@@ -81,7 +81,7 @@ class Monitoring:
                 if marker:
                     cursor=app.db.execute('INSERT OR IGNORE INTO trigger_requests(account_id,group_id,message_id,data,status) VALUES (?,?,?,?,?)',(int(account[0]),group,message,json.dumps(c),'pending'))
                     return {'status':'admitted' if cursor.rowcount else 'duplicate'}
-            if c.get('text','').strip()=='#link' or c.get('text','').strip().isdigit():
+            if not replay and (c.get('text','').strip()=='#link' or c.get('text','').strip().isdigit()):
                 if app.lock.locked():
                     return {'status':'held','reason':'Execution is active; resend the chat command after it finishes'}
                 async with app.lock:
@@ -96,6 +96,33 @@ class Monitoring:
                     return outcome
             return {'status':'ignored','reason':'Ordinary task context'}
         raise Blocked('Unsupported monitoring command')
+
+    async def release_confirmed(self):
+        """Drain at most 100 original observations per command, in source order.
+
+        A confirmed outgoing identity permits normal admission again; uncertain
+        outcomes still require reconciliation. Reuse freshness, access, activation
+        and dedup policy, without replaying interactive chat commands or execution.
+        The listener's dispatch ticks also drain known holds after restart.
+        """
+        app=self.app
+        rows=app.db.execute("""
+            SELECT group_id,message_id,data FROM held_events AS held
+            WHERE NOT EXISTS (
+                SELECT 1 FROM generated_sends AS sends
+                WHERE sends.group_id=held.group_id AND sends.status!='confirmed'
+            ) ORDER BY group_id,message_id LIMIT 100
+        """).fetchall()
+        for group,message,data in rows:
+            try:
+                outcome=await self.handle(json.loads(data),replay=True)
+            except Exception:
+                # Access/transport failures retain the original observation for a
+                # later bounded pass; they must not mask a completed send/task.
+                continue
+            if outcome['status']!='held':
+                with app.db:
+                    app.db.execute('DELETE FROM held_events WHERE group_id=? AND message_id=?',(group,message))
 
     async def dispatch(self):
         app=self.app
