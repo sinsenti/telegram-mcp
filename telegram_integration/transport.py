@@ -7,6 +7,7 @@ TOOL = {'name':'telegram','description':'Manual local Telegram task commands. Ta
         'folder_id':{'type':'integer'},'group_id':{'type':'integer'},'message_id':{'type':'integer'},
         'destination':{'type':'string','enum':['test']},'task_id':{'type':'string'},
         'scope':{'type':'string','enum':['message','topic']},'link':{'type':'string'},'query':{'type':'string'},
+        'unnecessary_input_ids':{'type':'array','items':{'type':'string'},'description':'Explicit caller instruction that listed unsupported source input identities are unnecessary. Never infer this exclusion.'},
         'selection_id':{'type':'string'},'continuation':{'type':'string'},'search_id':{'type':'string'},
         'choice':{'type':'integer','minimum':1},'page_size':{'type':'integer','minimum':1,'maximum':100}},
         'required':['action'],'additionalProperties':False}}

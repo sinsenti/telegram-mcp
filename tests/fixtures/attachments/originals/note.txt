@@ -1,0 +1,2 @@
+Attachment acceptance fixture
+Delivery token: copper-otter-73

@@ -6,6 +6,33 @@ class Blocked(Exception):
     """An action cannot proceed safely; caller receives the reason."""
 
 @dataclass(frozen=True)
+class Attachment:
+    media_id: str
+    original_name: str
+    mime_type: str | None = None
+    size: int | None = None
+
+@dataclass(frozen=True)
+class TaskInput:
+    input_id: str
+    source_group_id: int
+    source_message_id: int
+    media_id: str
+    original_name: str
+    mime_type: str | None
+    path: str
+    family: str
+    sha256: str
+    size: int
+    explicitly_unnecessary: bool = False
+
+@dataclass(frozen=True)
+class InputEvidence:
+    input_id: str
+    outcome: str
+    evidence: str
+
+@dataclass(frozen=True)
 class Message:
     group_id: int
     message_id: int
@@ -14,6 +41,7 @@ class Message:
     topic_id: int | None = None
     reply_to_id: int | None = None
     is_topic_root: bool = False
+    attachment: Attachment | None = None
 
 @dataclass(frozen=True)
 class Context:
@@ -26,11 +54,14 @@ class RunResult:
     explanation: str
     markdown: str
     turn_id: str
+    input_evidence: tuple[InputEvidence, ...] = ()
+    status: str = "completed"
 
 class TelegramAdapter(Protocol):
     async def allowed_groups(self, folder_id: int) -> set[int]: ...
     async def message(self, group_id: int, message_id: int) -> Message: ...
     async def context(self, group_id: int, message_id: int, scope: str) -> Context: ...
+    async def download(self, group_id: int, message_id: int, attachment: Attachment, file) -> None: ...
     async def resolve_link(self, link: str) -> Message: ...
     async def search(self, group_id: int, query: str) -> tuple[Message, ...]: ...
     async def send_text(self, group_id: int, message_id: int, text: str, topic_id: int | None) -> str: ...
@@ -39,4 +70,4 @@ class TelegramAdapter(Protocol):
 class CodexAdapter(Protocol):
     async def aclose(self) -> None: ...
     async def create_chat(self, cwd: Path) -> str: ...
-    async def run(self, chat_id: str, cwd: Path, prompt: str) -> RunResult: ...
+    async def run(self, chat_id: str, cwd: Path, prompt: str, inputs: tuple[TaskInput, ...] = ()) -> RunResult: ...

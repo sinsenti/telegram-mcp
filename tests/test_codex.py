@@ -116,3 +116,44 @@ class CodexAdapterTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ProcessLookupError):
                 os.kill(int((path/'server.pid').read_text()),0)
             await codex.aclose()
+
+    async def test_original_manifest_images_skills_and_content_evidence(self):
+        from telegram_integration.contracts import TaskInput
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)
+            image=path/'original.png'
+            image.write_bytes(b'image fixture; protocol test only')
+            server=SERVER.replace("result={}\n", "result={}\n    if method=='skills/list':\n        result={'data':[{'cwd':str(Path.cwd()),'skills':[{'name':'pdf','path':'/tools/pdf/SKILL.md','enabled':True}],'errors':[]}]}\n")
+            server=server.replace("if method=='turn/start':\n        text=", "if method=='turn/start':\n        Path('payload.json').write_text(json.dumps(p))\n        text=")
+            server=server.replace("'markdown':'# Result\\n\\n42'", "'markdown':'# Result\\n\\n42','input_evidence':[{'input_id':'photo','outcome':'interpreted','evidence':'Three red squares above two blue circles'},{'input_id':'pdf','outcome':'interpreted','evidence':'Page 2: amber bridge 47'}]")
+            script=path/'server.py';script.write_text(server)
+            codex=CodexAppServer(command=[sys.executable,str(script),'success'])
+            chat=await codex.create_chat(path)
+            inputs=(TaskInput('photo',10,42,'p','shape.png','image/png',str(image),'image','hash',5),
+                    TaskInput('pdf',10,43,'d','checkpoint.pdf','application/pdf',str(path/'original.pdf'),'pdf','hash',5))
+            result=await codex.run(chat,path,'Read originals',inputs=inputs)
+            self.assertEqual(result.input_evidence[0].evidence,'Three red squares above two blue circles')
+            payload=json.loads((path/'payload.json').read_text())
+            self.assertIn({'type':'localImage','path':str(image)},payload['input'])
+            self.assertIn({'type':'skill','name':'pdf','path':'/tools/pdf/SKILL.md'},payload['input'])
+            self.assertIn('checkpoint.pdf',payload['input'][0]['text'])
+            self.assertIn('input_evidence',payload['outputSchema']['required'])
+
+    async def test_attachment_result_requires_exact_nonempty_interpretation_evidence(self):
+        from telegram_integration.contracts import TaskInput
+        invalid=[[],[{'input_id':'unknown','outcome':'interpreted','evidence':'Fact'}],
+                 [{'input_id':'one','outcome':'interpreted','evidence':''}],
+                 [{'input_id':'one','outcome':'interpreted','evidence':'Fact'}]*2,
+                 [{'input_id':'one','outcome':'explicitly_unnecessary','evidence':'Model guessed'}]]
+        for evidence in invalid:
+            with tempfile.TemporaryDirectory() as folder:
+                path=Path(folder)
+                output={'status':'completed','explanation':'Done','markdown':'# Summary','input_evidence':evidence}
+                server=SERVER.replace("text=json.dumps({'status':'completed','explanation':'Done.','markdown':'# Result\\n\\n42'})",'text='+repr(json.dumps(output)))
+                script=path/'server.py';script.write_text(server)
+                codex=CodexAppServer(command=[sys.executable,str(script),'success'])
+                chat=await codex.create_chat(path)
+                item=TaskInput('one',10,42,'d','note.txt','text/plain',str(path/'original.txt'),'text','hash',5)
+                with self.assertRaises(Blocked):
+                    await codex.run(chat,path,'Read',inputs=(item,))
+                await codex.aclose()
