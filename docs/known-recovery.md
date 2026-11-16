@@ -10,10 +10,10 @@ A lost turn-start acknowledgment can be correlated using the original durable cl
 
 Reporting delegates to `reconcile_reports` and its durable Telegram operation journal. It retains the original group, source reply, topic, payload identity and confirmed message IDs. Each new operation revalidates access. An acknowledged explanation or document is never repeated. Report recovery updates only the request for that exact task run, leaving earlier queue outcomes intact.
 
-Access-paused tasks remain paused after restart or re-addition. Recovery can observe their known Codex turn and save a terminal result without starting work or sending Telegram reports. It does not restore authority to resume them.
+Access-paused tasks remain paused after restart or re-addition. Recovery can observe their known Codex turn and save a terminal result without starting work or sending Telegram reports. It does not restore authority to resume them. After readiness is re-established, a fresh request may continue the remembered chat following an observed terminal interruption or failure.
 
 ## Verification and limits
 
 `tests/test_known_recovery.py` reconstructs Application against real SQLite and task folders, exercising captured snapshots, queue order and task binding, execution ownership, accepted turn identity, lost start/create responses, terminal result persistence, malformed output and partial reports. External Telegram/Codex adapters are controlled fixtures. Production history parsing and operation correlation are also covered by adapter wire tests in ticket 13; Telegram reporting uses ticket 14's journal and immutable payload handling.
 
-These hermetic restart tests do not prove cross-process interruption of desktop-owned Codex work or live persistence/uniqueness of caller UUIDs. Recovery conservatively blocks where authoritative readback is unavailable. No new live Codex turn or Telegram client was started for this ticket's implementation checks.
+These hermetic restart tests do not establish cross-process interruption of desktop-owned Codex work or global uniqueness of caller UUIDs; live adapter evidence is recorded separately in ticket 13. Recovery conservatively blocks where authoritative readback is unavailable. No new live Codex turn or Telegram client was started for this ticket's implementation checks.

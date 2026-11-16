@@ -371,3 +371,55 @@ class KnownRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result['tasks'][0]['status'],'finished',result)
         self.assertEqual(self.telegram.remote,original)
         self.assertEqual(len(self.codex.runs),1)
+
+    async def paused_terminal_fresh_request(self, terminal_status):
+        import asyncio
+        from types import SimpleNamespace
+        from tests.test_routing import Telegram, Codex, Catalog
+        from telegram_integration.contracts import Message
+        await self.app.close()
+        project=self.root/'project'; project.mkdir()
+        self.telegram=Telegram(); self.codex=Codex(); self.catalog=Catalog(project)
+        groups={10}; cutoff=100
+        async def account(): return 77
+        async def latest(group): return cutoff
+        async def allowed(folder): return groups.copy()
+        async def message(group,identity): return Message(group,identity,'#codex task',topic_id=2)
+        self.telegram.self_id=account; self.telegram.latest_message_id=latest
+        self.telegram.allowed_groups=allowed; self.telegram.message=message
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        async def event(identity):
+            return await self.app.handle(dict(action='telegram_event',kind='new_message',group_id=10,message_id=identity,
+                account_id=77,sender_id=77,text='#codex task'))
+        await self.app.handle({'action':'monitor_enable'}); await event(101)
+        normal_run=self.codex.run
+        async def crash(chat,cwd,prompt,**kwargs):
+            await kwargs['on_turn_accepted']('known-terminal')
+            self.codex.runs.append((chat,cwd)); raise asyncio.CancelledError()
+        self.codex.run=crash
+        with self.assertRaises(asyncio.CancelledError): await self.app.handle({'action':'dispatch_pending'})
+        request=(await self.app.handle({'action':'monitor_status'}))['requests'][0]
+        first=await self.app.handle({'action':'status','task_id':request['task_id']})
+        groups.clear(); await self.app.handle({'action':'folder_changed'})
+        await self.app.close()
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        async def observe(chat,cwd,turn): return SimpleNamespace(turn_id=turn,status=terminal_status,result=None,reason=None)
+        self.codex.observe_turn=observe; self.codex.run=normal_run
+        recovered=await self.app.handle({'action':'recover'})
+        self.assertEqual((recovered['tasks'][0]['status'],recovered['tasks'][0]['phase']),('paused','terminal_'+terminal_status))
+        groups.add(10); cutoff=150
+        await self.app.handle({'action':'monitor_refresh'})
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'idle')
+        await event(151)
+        fresh=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual(fresh['status'],'finished',fresh)
+        self.assertEqual((fresh['task_id'],fresh['chat_id'],fresh['folder'],fresh['run']),
+                         (first['task_id'],first['chat_id'],first['folder'],2))
+        self.assertEqual(len(self.codex.created),1)
+        self.assertEqual(len(self.codex.runs),2)
+
+    async def test_fresh_request_continues_paused_observed_interrupted_chat(self):
+        await self.paused_terminal_fresh_request('interrupted')
+
+    async def test_fresh_request_continues_paused_observed_failed_chat(self):
+        await self.paused_terminal_fresh_request('failed')

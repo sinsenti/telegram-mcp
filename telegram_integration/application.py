@@ -591,7 +591,7 @@ class Application:
                           and task.get('phase') in ('capturing_inputs','terminal_result')
                           and not task.get('report_blocker')
                           and task.get('placement',{}).get('status') != 'unresolved')
-            paused_continuation=(task['status']=='paused' and task.get('chat_id') and task.get('phase') in ('terminal_result','reporting','complete'))
+            paused_continuation=(task['status']=='paused' and task.get('chat_id') and task.get('phase') in ('terminal_result','terminal_interrupted','terminal_failed','reporting','complete'))
             if task['status'] not in ('finished','linked') and not can_continue and not paused_continuation:
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
