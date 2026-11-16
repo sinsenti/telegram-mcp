@@ -1,3 +1,4 @@
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -7,6 +8,25 @@ class Blocked(Exception):
 
 class MissingMessage(Blocked):
     """Telegram confirms that the selected message no longer exists."""
+
+@dataclass(frozen=True)
+class FrozenDocument:
+    """Verified upload bytes detached from the journal's mutable local path."""
+    name: str
+    content: bytes
+    sha256: str
+
+    def __post_init__(self):
+        if type(self.content) is not bytes or hashlib.sha256(self.content).hexdigest()!=self.sha256:
+            raise Blocked('Upload bytes differ from the original document identity')
+
+    @classmethod
+    def capture(cls, path: Path, expected_sha256=None):
+        if path.is_symlink() or not path.is_file():
+            raise Blocked('Pending Telegram upload is not an original regular file')
+        content=path.read_bytes()
+        actual=hashlib.sha256(content).hexdigest()
+        return cls(path.name,content,expected_sha256 if expected_sha256 is not None else actual)
 
 @dataclass(frozen=True)
 class GroupMetadata:
@@ -83,7 +103,7 @@ class TelegramAdapter(Protocol):
     async def resolve_link(self, link: str) -> Message: ...
     async def search(self, group_id: int, query: str) -> tuple[Message, ...]: ...
     async def send_text(self, group_id: int, message_id: int, text: str, topic_id: int | None, *, random_id: int | None = None) -> str: ...
-    async def send_document(self, group_id: int, message_id: int, document: Path, topic_id: int | None, *, random_id: int | None = None) -> str: ...
+    async def send_document(self, group_id: int, message_id: int, document: Path | FrozenDocument, topic_id: int | None, *, random_id: int | None = None) -> str: ...
 
 class CodexAdapter(Protocol):
     async def list_chats(self, project_id: str, cwd: Path) -> list[dict]: ...
