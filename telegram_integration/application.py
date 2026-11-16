@@ -196,7 +196,9 @@ class Application:
             if task['status'] != 'finished':
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
-            source = await self._source(dict(c,group_id=task['group_id']))
+            if 'group_id' in c and int(c['group_id']) != task['group_id']:
+                raise Blocked('Follow-up source must remain in the same group')
+            source = await self._source({'group_id':task['group_id'], **c})
             if source['group_id'] != task['group_id']:
                 raise Blocked('Follow-up source must remain in the same group')
             task.update(source)

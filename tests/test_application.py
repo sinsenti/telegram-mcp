@@ -68,6 +68,16 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([x[0] for x in self.codex.runs],['chat-actual-123']*2)
         self.assertEqual(self.telegram.reports[2][:2],(10,43))
 
+    async def test_followup_rejects_explicit_different_group_before_retrieval(self):
+        first = await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
+        reads, runs, reports = list(self.telegram.reads), list(self.codex.runs), list(self.telegram.reports)
+        self.telegram.allowed.add(20)
+        result = await self.app.handle({'action':'followup','task_id':first['task_id'],'group_id':20,'message_id':43})
+        self.assertEqual(result['status'], 'blocked')
+        self.assertIn('same group', result['reason'])
+        self.assertEqual((self.telegram.reads,self.codex.runs,self.telegram.reports),(reads,runs,reports))
+        self.assertEqual(await self.app.handle({'action':'status','task_id':first['task_id']}),first)
+
     async def test_unknown_task_destination_never_starts_chat(self):
         result = await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'production'})
         self.assertEqual(result['status'],'blocked')
