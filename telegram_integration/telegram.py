@@ -26,6 +26,21 @@ class TelethonAdapter:
         self.folder_id = folder_id
         included = {utils.get_peer_id(p) for p in selected.include_peers + selected.pinned_peers}
         excluded = {utils.get_peer_id(p) for p in getattr(selected,'exclude_peers',[])}
+        if isinstance(selected,(types.DialogFilter,types.DialogFilterChatlist)) and not getattr(selected,'groups',False):
+            # Explicit folders need only their selected peers. Re-read the filter
+            # and entity metadata each time; enumerating all dialogs per operation
+            # triggers unrelated account reads and Telegram flood waits.
+            peers={utils.get_peer_id(p):p for p in selected.include_peers + selected.pinned_peers}
+            allowed=set()
+            for identity, peer in peers.items():
+                if identity in excluded:
+                    continue
+                entity=await self.client.get_entity(peer)
+                if utils.get_peer_id(entity) != identity:
+                    raise Blocked('Resolved folder peer differs from the included peer')
+                if isinstance(entity,types.Chat) or isinstance(entity,types.Channel) and (entity.megagroup or entity.gigagroup):
+                    allowed.add(identity)
+            return allowed
         allowed=set()
         async for dialog in self.client.iter_dialogs():
             if not dialog.is_group or dialog.id in excluded:
@@ -222,7 +237,7 @@ class TelethonAdapter:
         if len(text)>4000:
             raise Blocked('Explanation is too long for Telegram; inspect local result')
         result=await self.client(functions.messages.SendMessageRequest(peer=peer,message=text,
-            random_id=secrets.randbits(63),reply_to=types.InputReplyToMessage(message_id,top_msg_id=topic_id)))
+            random_id=secrets.randbits(63),reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
         return self._message_id(result)
 
     async def send_document(self, group_id, message_id, document: Path, topic_id):
@@ -232,5 +247,5 @@ class TelethonAdapter:
         result=await self.client(functions.messages.SendMediaRequest(peer=peer,
             media=types.InputMediaUploadedDocument(file=uploaded,mime_type='text/markdown',
                 attributes=[types.DocumentAttributeFilename(document.name)]),message='',
-            random_id=secrets.randbits(63),reply_to=types.InputReplyToMessage(message_id,top_msg_id=topic_id)))
+            random_id=secrets.randbits(63),reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
         return self._message_id(result)

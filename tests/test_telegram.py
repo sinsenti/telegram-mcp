@@ -18,6 +18,8 @@ class Client:
         return types.UpdateShortSentMessage(id=500,pts=1,pts_count=1,date=None,out=True)
     async def iter_dialogs(self):
         yield NS(id=-1000000000010,is_group=True,entity=types.Channel(id=10,title='Project',photo=types.ChatPhotoEmpty(),date=None,megagroup=True),dialog=NS(folder_id=None))
+    async def get_entity(self, peer):
+        return types.Channel(id=10,title='Project',photo=types.ChatPhotoEmpty(),date=None,megagroup=True)
     async def get_input_entity(self, group):
         return types.InputPeerChannel(10,123)
     async def get_messages(self, peer, ids):
@@ -26,6 +28,56 @@ class Client:
         return types.InputFile(id=1,parts=1,name='result.md',md5_checksum='')
 
 class TelegramTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_folder_works_without_account_dialogs_and_revalidates_membership(self):
+        class ExplicitClient(Client):
+            def __init__(self):
+                super().__init__()
+                self.resolved=[]
+            async def iter_dialogs(self):
+                raise AssertionError('Whole-account dialog enumeration is unavailable')
+                yield
+            async def get_entity(self, peer):
+                self.resolved.append(peer)
+                if isinstance(peer,types.InputPeerUser):
+                    return types.User(id=peer.user_id,first_name='Person')
+                return types.Channel(id=peer.channel_id,title='Project',photo=types.ChatPhotoEmpty(),date=None,
+                                     megagroup=peer.channel_id != 12,broadcast=peer.channel_id == 12)
+        client=ExplicitClient()
+        adapter=TelethonAdapter(client)
+        self.assertEqual(await adapter.allowed_groups(7),{-1000000000010})
+        client.filter.pinned_peers=[types.InputPeerChannel(11,123)]
+        client.filter.include_peers += [types.InputPeerChannel(12,123),types.InputPeerUser(13,123)]
+        client.filter.exclude_peers=[types.InputPeerChannel(10,123)]
+        client.resolved.clear()
+        self.assertEqual(await adapter.allowed_groups(7),{-1000000000011})
+        self.assertEqual({getattr(p,'channel_id',getattr(p,'user_id',None)) for p in client.resolved},{11,12,13})
+        with self.assertRaises(Blocked):
+            await adapter.message(-1000000000010,42)
+        client.filter=types.DialogFilterChatlist(id=7,title=types.TextWithEntities('Codex',[]),
+            pinned_peers=[types.InputPeerChannel(11,123)],
+            include_peers=[types.InputPeerChannel(12,123),types.InputPeerUser(13,123)])
+        self.assertEqual(await adapter.allowed_groups(7),{-1000000000011})
+        client.filter.pinned_peers=[]
+        self.assertEqual(await adapter.allowed_groups(7),set())
+
+    async def test_dynamic_folders_keep_dialog_membership_rules(self):
+        class DialogClient(Client):
+            async def get_entity(self, peer):
+                raise AssertionError('Dynamic membership requires dialogs')
+        client=DialogClient()
+        adapter=TelethonAdapter(client)
+        client.filter.groups=True
+        client.filter.include_peers=[]
+        self.assertEqual(await adapter.allowed_groups(7),{-1000000000010})
+        client.filter.exclude_peers=[types.InputPeerChannel(10,123)]
+        self.assertEqual(await adapter.allowed_groups(7),set())
+
+    async def test_explicit_folder_rejects_entity_identity_mismatch(self):
+        client=Client()
+        client.filter.include_peers=[types.InputPeerChannel(11,123)]
+        with self.assertRaises(Blocked):
+            await TelethonAdapter(client).allowed_groups(7)
+
     async def test_private_links_keep_message_scope_and_validate_thread_identity(self):
         client=Client()
         adapter=TelethonAdapter(client)
@@ -69,7 +121,9 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
     async def test_general_history_excludes_other_topics_and_search_is_peer_scoped(self):
         class GeneralClient(Client):
             async def get_entity(self, peer):
-                return NS(forum=True)
+                entity=await super().get_entity(peer)
+                entity.forum=True
+                return entity
             async def get_messages(self, peer, ids):
                 if ids == 1:
                     return None
@@ -122,6 +176,18 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         client.filter.exclude_peers=[types.InputPeerChannel(10,123)]
         with self.assertRaises(Blocked):
             await adapter.send_text(-1000000000010,42,'Should not send',5)
+
+    async def test_general_reports_omit_top_message_for_text_and_document(self):
+        client=Client()
+        adapter=TelethonAdapter(client)
+        await adapter.allowed_groups(7)
+        await adapter.send_text(-1000000000010,42,'Done',1)
+        with tempfile.TemporaryDirectory() as tmp:
+            document=Path(tmp)/'result.md'
+            document.write_text('# Result')
+            await adapter.send_document(-1000000000010,42,document,1)
+        sent=[r for r in client.requests if isinstance(r,(functions.messages.SendMessageRequest,functions.messages.SendMediaRequest))]
+        self.assertEqual([(r.reply_to.reply_to_msg_id,r.reply_to.top_msg_id) for r in sent],[(42,None),(42,None)])
 
     async def test_link_previews_are_text_but_real_and_unsupported_media_are_attachments(self):
         client=Client()
