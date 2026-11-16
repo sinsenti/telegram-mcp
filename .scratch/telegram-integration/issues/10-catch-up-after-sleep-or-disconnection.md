@@ -4,7 +4,7 @@
 
 **Blocked by:** 09: Queue requests with fixed context and withdrawal.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Retain activation points across reconnects; newly enabled groups still use fresh-trigger readiness.
 - [ ] Fetch missed requests in bounded batches without discarding remaining eligible backlog.

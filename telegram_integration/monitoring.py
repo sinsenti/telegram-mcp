@@ -1,4 +1,5 @@
 """Durable monitoring policy, called only through Application.handle."""
+from contextlib import nullcontext
 import json
 import re
 from .contracts import Blocked, MissingMessage
@@ -49,7 +50,7 @@ class Monitoring:
                     request['outcome']=task
                     app.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(request),sequence))
 
-    async def handle(self, c, *, replay=False):
+    async def handle(self, c, *, replay=False, commit=True):
         app=self.app
         if c['action']=='monitor_status':
             return {'status':'monitoring','generated_sends':[dict(operation_id=r[0],group_id=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM generated_sends')],
@@ -99,7 +100,7 @@ class Monitoring:
             if account and activation and activation[1] in ('readiness_pending','readiness_uncertain'):
                 reason='Readiness outcome is unresolved; candidate held for reconciliation'
             elif not account or not activation or activation[1]!='ready': reason='Monitoring is not ready for this group'
-            elif c.get('kind')!='new_message': reason='Edits and historical observations do not prove a fresh request'
+            elif c.get('kind') not in ('new_message','history_message'): reason='Edits and historical observations do not prove a fresh request'
             elif c.get('forwarded'): reason='Forwarded content is not a fresh user-authored request'
             elif c.get('edited'): reason='Edited history cannot prove the original request marker'
             elif c.get('sender_id')!=int(account[0]) or c.get('account_id')!=int(account[0]): reason='Request is not authored by the connected user'
@@ -109,11 +110,11 @@ class Monitoring:
             marker=bool(MARKER.search(c.get('text','')))
             if reason:
                 if 'held' in reason:
-                    with app.db:
+                    with app.db if commit else nullcontext():
                         app.db.execute('INSERT OR IGNORE INTO held_events VALUES (?,?,?,?)',(group,message,json.dumps(c),reason))
                 return {'status':'held' if 'held' in reason else 'ignored','reason':reason}
             # Discovery progress and admission are one commit, including harmless context messages.
-            with app.db:
+            with app.db if commit else nullcontext():
                 app.db.execute('INSERT INTO discovery_progress VALUES (?,?) ON CONFLICT(group_id) DO UPDATE SET message_id=MAX(message_id,excluded.message_id)',(group,message))
                 if marker:
                     cursor=app.db.execute('INSERT OR IGNORE INTO trigger_requests(account_id,group_id,message_id,data,status) VALUES (?,?,?,?,?)',(int(account[0]),group,message,json.dumps(c),'pending'))
