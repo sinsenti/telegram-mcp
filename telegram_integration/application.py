@@ -44,19 +44,24 @@ class Application:
             self.db.close()
 
     def _save(self, task):
-        # Reference maintenance can run while execution owns a different snapshot.
-        row = self.db.execute("SELECT data FROM tasks WHERE id=?", (task["task_id"],)).fetchone()
-        if row and "reference_sync" in (latest := json.loads(row[0])):
-            task["reference_sync"] = latest["reference_sync"]
-        self.folder_access.preserve_pause(task)
+        # Reference commands can write while another process owns execution.
+        # Claim the writer before reading either snapshot to prevent lost updates.
         with self.db:
+            if not self.db.in_transaction:
+                self.db.execute('BEGIN IMMEDIATE')
+            row = self.db.execute("SELECT data FROM tasks WHERE id=?", (task["task_id"],)).fetchone()
+            if row and "reference_sync" in (latest := json.loads(row[0])):
+                task["reference_sync"] = latest["reference_sync"]
+            self.folder_access.preserve_pause(task)
             self.db.execute('INSERT OR REPLACE INTO tasks VALUES (?, ?)', (task['task_id'], json.dumps(task)))
 
     def _save_reference(self, task):
-        latest = self._task(task['task_id'])
-        latest['reference_sync'] = task['reference_sync']
-        self.folder_access.preserve_pause(latest)
         with self.db:
+            if not self.db.in_transaction:
+                self.db.execute('BEGIN IMMEDIATE')
+            latest = self._task(task['task_id'])
+            latest['reference_sync'] = task['reference_sync']
+            self.folder_access.preserve_pause(latest)
             self.db.execute('UPDATE tasks SET data=? WHERE id=?', (json.dumps(latest), task['task_id']))
         task.update(latest)
 
@@ -499,9 +504,12 @@ class Application:
         await self._task_access(task)
         if task.get('client_request_id'):
             raise Blocked('Codex turn start outcome needs reconciliation before another turn can start')
+        await self._maintain_reference(task)
+        # Metadata/reference work yields to folder changes. Revalidate before
+        # recording the external start intent and handing work to Codex.
+        await self._task_access(task)
         task.update(phase='executing',client_request_id=str(uuid.uuid4()))
         self._save(task)
-        await self._maintain_reference(task)
         async def accepted(turn_id):
             task['turn_id']=turn_id
             self._save(task)
