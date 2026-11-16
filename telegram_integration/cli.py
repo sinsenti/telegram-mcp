@@ -8,6 +8,7 @@ import sys
 from telethon import TelegramClient
 from .application import Application
 from .codex import CodexAppServer
+from .catalog import CodexProjectCatalog
 from .telegram import TelethonAdapter
 from .transport import serve
 
@@ -34,7 +35,7 @@ async def run(args):
         if args.mode=='folders':
             print(json.dumps(await adapter.folders(),ensure_ascii=False))
             return
-        app=Application(local/'state.sqlite',local/'tasks',adapter,CodexAppServer())
+        app=Application(local/'state.sqlite',local/'tasks',adapter,CodexAppServer(),catalog=CodexProjectCatalog())
         if args.mode=='mcp':
             await serve(app,sys.stdin,sys.stdout)
         else:
