@@ -57,7 +57,7 @@ class Monitoring:
                     'discovery_progress':[dict(group_id=r[0],message_id=r[1]) for r in app.db.execute('SELECT * FROM discovery_progress')],
                     'groups':[dict(group_id=r[0],cutoff=r[1],status=r[2]) for r in app.db.execute('SELECT * FROM monitoring_groups')],
                     'requests':[dict(sequence=r[0],group_id=r[1],message_id=r[2],status=r[3],task_id=json.loads(r[4]).get('task_id'),outcome=json.loads(r[4]).get('outcome')) for r in app.db.execute('SELECT sequence,group_id,message_id,status,data FROM trigger_requests ORDER BY sequence')]}
-        if c['action'] in ('monitor_enable','monitor_refresh'):
+        if c['action'] in ('monitor_enable','monitor_refresh','folder_changed'):
             folder=app.db.execute("SELECT value FROM settings WHERE key='folder'").fetchone()
             if not folder: raise Blocked('Select a folder before enabling monitoring')
             account=await app.telegram.self_id()
@@ -67,7 +67,12 @@ class Monitoring:
             with app.db:
                 app.db.execute("INSERT OR REPLACE INTO settings VALUES ('monitor_account',?)",(str(account),))
             groups=await app.telegram.allowed_groups(int(folder[0]))
+            known={row[0] for row in app.db.execute('SELECT group_id FROM monitoring_groups')}
+            known.update(json.loads(row[0])['group_id'] for row in app.db.execute('SELECT data FROM tasks'))
+            for group in known-groups:
+                await app.folder_access.revoke(group)
             for group in groups:
+                app.folder_access.enable(group)
                 row=app.db.execute('SELECT status FROM monitoring_groups WHERE group_id=?',(group,)).fetchone()
                 if row and row[0] not in ('disabled','readiness_pending','readiness_uncertain'): continue
                 if row and row[0] in ('readiness_pending','readiness_uncertain'):
@@ -198,5 +203,5 @@ class Monitoring:
             if task.get('status')=='blocked' and task.get('phase') in ('creating_chat','executing'):
                 status='uncertain'
         with app.db:
-            app.db.execute('UPDATE trigger_requests SET status=?,data=? WHERE sequence=?',(status,json.dumps(event),sequence))
+            app.db.execute("UPDATE trigger_requests SET status=CASE WHEN status='paused' THEN 'paused' ELSE ? END,data=? WHERE sequence=?",(status,json.dumps(event),sequence))
         return outcome

@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from pathlib import Path
 import test_routing
 
 class MonitoringTests(unittest.IsolatedAsyncioTestCase):
@@ -451,3 +452,35 @@ asyncio.run(main())
         self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'blocked')
         self.assertEqual((await self.app.handle(dict(action='task',destination='project',group_id=10,message_id=103)))['status'],'blocked')
         self.assertEqual(len(self.codex.created),1)
+
+    async def test_removal_during_execution_keeps_result_paused_and_readd_needs_fresh_request(self):
+        from telegram_integration.application import Application
+        from telegram_integration.contracts import Message, RunResult
+        groups={10}; started=asyncio.Event(); finish=asyncio.Event()
+        async def allowed(folder): return groups.copy()
+        async def message(group,identity): return Message(group,identity,'#codex greeting',topic_id=2)
+        async def run(*args,**kwargs):
+            if kwargs.get('on_turn_accepted'): await kwargs['on_turn_accepted']('active-turn')
+            started.set(); await finish.wait(); return RunResult('Done','Preserved result','active-turn')
+        self.telegram.allowed_groups=allowed; self.telegram.message=message; self.codex.run=run
+        await self.app.handle({'action':'monitor_enable'})
+        await self.event(101); await self.event(102)
+        worker=asyncio.create_task(self.app.handle({'action':'dispatch_pending'}))
+        try:
+            await asyncio.wait_for(started.wait(),1)
+            groups.clear()
+            removed=await asyncio.wait_for(self.app.handle({'action':'folder_changed'}),1)
+            self.assertEqual([r['status'] for r in removed['requests']],['paused','paused'])
+        finally:
+            finish.set(); result=await worker
+        self.assertEqual(result['status'],'paused',result)
+        self.assertEqual(Path(result['document']).read_text(),'Preserved result')
+        self.assertEqual(result.get('report_ids',[]),[])
+        await self.app.close()
+        self.app=Application(self.root/'db',self.root/'tasks',self.telegram,self.codex,catalog=self.catalog)
+        groups.add(10)
+        await self.app.handle({'action':'monitor_refresh'})
+        self.assertEqual((await self.app.handle({'action':'dispatch_pending'}))['status'],'idle')
+        await self.event(103)
+        continued=await self.app.handle({'action':'dispatch_pending'})
+        self.assertEqual((continued['status'],continued['chat_id']),('finished',result['chat_id']),continued)
