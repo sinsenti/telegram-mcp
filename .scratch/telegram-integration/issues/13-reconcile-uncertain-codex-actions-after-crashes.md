@@ -4,7 +4,7 @@
 
 **Blocked by:** 09: Queue requests with fixed context and withdrawal.
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 - [ ] Persist outgoing operation intent and recoverable chat/turn identities around creation and execution transitions.
 - [ ] Inject remote success followed by lost acknowledgment for chat creation and turn start/completion, not only ordinary failures.
