@@ -13,7 +13,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
                 attachment=Attachment('doc-7','../../AGENTS.md','text/plain',19)),))
         async def download(group,message,attachment,file):
             file.write(b'The blue code: 731.')
-        async def run(chat,cwd,prompt,inputs=()):
+        async def run(chat,cwd,prompt,inputs=(),**kwargs):
             self.assertEqual(Path(inputs[0].path).read_bytes(),b'The blue code: 731.')
             self.assertEqual(inputs[0].original_name,'../../AGENTS.md')
             return RunResult('Read original.','# Finding\nBlue code is 731.','turn',
@@ -61,7 +61,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
                (InputEvidence('10:42:a','explicitly_unnecessary','Model guessed irrelevant'),),
                (InputEvidence('10:42:a','unreadable','Invalid PDF structure'),)]
         for evidence in cases:
-            async def run(*args,inputs=()):
+            async def run(*args,inputs=(),**kwargs):
                 return RunResult('Done','# Result','turn',evidence)
             self.codex.run=run
             result=await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
@@ -75,7 +75,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
             return Context((Message(group,message,'Prepare a summary; archive is unnecessary',True,2,
                 attachment=Attachment('archive','extras.zip')),))
         async def download(group,message,attachment,file): file.write(b'opaque archive')
-        async def run(*args,inputs=()):
+        async def run(*args,inputs=(),**kwargs):
             return RunResult('extras.zip preserved; explicitly unnecessary.','# Summary\nExcluded extras.zip.','turn',
                 (InputEvidence(inputs[0].input_id,'explicitly_unnecessary','Explicit caller exclusion'),))
         self.telegram.context=context;self.telegram.download=download;self.codex.run=run
@@ -98,7 +98,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
             return Context(tuple(Message(group,message+i,'Summarize originals' if i==0 else '',True,2,
                 attachment=Attachment(str(i),name)) for i,name in enumerate(names)))
         async def download(group,message,attachment,file): file.write((originals/attachment.original_name).read_bytes())
-        async def run(*args,inputs=()):
+        async def run(*args,inputs=(),**kwargs):
             self.assertEqual([item.family for item in inputs],['text','image','pdf','word','spreadsheet'])
             for item in inputs:
                 self.assertEqual(Path(item.path).read_bytes(),(originals/item.original_name).read_bytes())
@@ -123,7 +123,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
             return Context((Message(group,message,'Read both',True,2,attachment=Attachment('a','original','application/pdf')),
                             Message(group,message+1,'',True,2,attachment=Attachment('b','original','text/plain'))))
         async def download(group,message,attachment,file): file.write(attachment.media_id.encode())
-        async def run(*args,inputs=()):
+        async def run(*args,inputs=(),**kwargs):
             self.assertEqual([item.family for item in inputs],['pdf','text'])
             self.assertNotEqual(inputs[0].path,inputs[1].path)
             return RunResult('Read both','# Summary','turn',tuple(InputEvidence(i.input_id,'interpreted','Fixture finding') for i in inputs))
@@ -136,7 +136,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
         async def context(group,message,scope):
             return Context((Message(group,message,'Read',True,2,attachment=Attachment('a','note.txt')),))
         async def download(group,message,attachment,file): file.write(b'original')
-        async def run(*args,inputs=()):
+        async def run(*args,inputs=(),**kwargs):
             Path(inputs[0].path).write_bytes(b'modified')
             return RunResult('Done','# Result','turn',(InputEvidence(inputs[0].input_id,'interpreted','Read content'),))
         self.telegram.context=context;self.telegram.download=download;self.codex.run=run
@@ -150,7 +150,7 @@ class AttachmentTests(unittest.IsolatedAsyncioTestCase):
             return Context((Message(group,message,'Use original',True,2,
                 attachment=Attachment('a',name)),))
         async def download(group,message,attachment,file): file.write(b'original')
-        async def run(*args,inputs=()):
+        async def run(*args,inputs=(),**kwargs):
             return RunResult('Read original','# Result','turn-'+str(inputs[0].source_message_id),
                 (InputEvidence(inputs[0].input_id,'interpreted','Line 1: original'),))
         self.telegram.context=context;self.telegram.download=download;self.codex.run=run
