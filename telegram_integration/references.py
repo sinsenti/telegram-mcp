@@ -28,8 +28,8 @@ async def synchronize(app, task):
         state['observation'] = {'status':'current' if name and name.strip() else 'pending'}
     except Exception as exc:
         state['observation'] = {'status':'failed','reason':str(exc)}
+        # Metadata availability must not stall independent status/reference work.
         app._save(task)
-        return task
     name = state.get('name')
     state['title'] = {'status':'pending'}
     if name:

@@ -18,3 +18,7 @@
 Implemented project-only numbered chat choices and explicit topic linkage through the shared application interface, with exact-source Telegram command normalization. Selection and every subsequent run revalidate folder access, project identity, and current chat membership. A stable existing chat and task folder survive restart; duplicate topic ownership, stale/invalid choices, ordinary context text, and foreign canonical project IDs cannot rebind. Unassigned legacy chats require a uniquely catalog-owned exact cwd, with a distinct honest placement status.
 
 Nine application tests and a scoped paginated subprocess adapter contract pass. See [chat linking](../../../docs/chat-linking.md) for the API, membership basis, limitations, and concrete live proposal. Acceptance boxes describe automated evidence; live Telegram selection/continuation remains unperformed and this ticket stays needs-info pending explicit live authorization and evidence.
+
+## Review regression fix
+
+Explicit follow-ups now verify that the saved task still owns its current topic binding and that the linked chat has no foreign topic owner before retrieving source context or invoking Codex. A shared-interface regression reproduces chat A moving from topic 2 to topic 9 after topic 2 switches to chat B: the superseded task ID is rejected without a Codex action, and later ordinary tasks continue B in topic 2 and A in topic 9. Live acceptance remains pending.
