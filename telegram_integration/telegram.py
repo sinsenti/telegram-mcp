@@ -6,7 +6,7 @@ from urllib.parse import urlparse, parse_qs
 from dataclasses import replace
 from telethon import utils
 from telethon.tl import functions, types
-from .contracts import Blocked, MissingMessage, Context, Message, Attachment, GroupMetadata
+from .contracts import Blocked, MissingMessage, Context, Message, Attachment, GroupMetadata, FrozenDocument
 
 class TelethonAdapter:
     def __init__(self, client):
@@ -300,9 +300,10 @@ class TelethonAdapter:
             random_id=random_id,reply_to=None if message_id is None else types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
         return self._sent(result,random_id)
 
-    async def send_document(self, group_id, message_id, document: Path, topic_id, *, random_id=None):
+    async def send_document(self, group_id, message_id, document: Path | FrozenDocument, topic_id, *, random_id=None):
+        document=document if isinstance(document,FrozenDocument) else FrozenDocument.capture(document)
         await self._peer(group_id)
-        uploaded=await self.client.upload_file(str(document))
+        uploaded=await self.client.upload_file(document.content,file_name=document.name)
         peer=await self._peer(group_id)  # Membership can change during upload.
         random_id=secrets.randbits(63) if random_id is None else random_id
         result=await self.client(functions.messages.SendMediaRequest(peer=peer,
