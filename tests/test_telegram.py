@@ -24,7 +24,7 @@ class Client:
         return types.InputPeerChannel(10,123)
     async def get_messages(self, peer, ids):
         return NS(id=ids,chat_id=-1000000000010,raw_text='Old task',media=self.media,reply_to=NS(reply_to_top_id=5,forum_topic=True,reply_to_msg_id=5),action=None)
-    async def upload_file(self, path):
+    async def upload_file(self, payload, *, file_name=None):
         return types.InputFile(id=1,parts=1,name='result.md',md5_checksum='')
 
 class TelegramTests(unittest.IsolatedAsyncioTestCase):
@@ -180,6 +180,28 @@ class TelegramTests(unittest.IsolatedAsyncioTestCase):
         client.filter.exclude_peers=[types.InputPeerChannel(10,123)]
         with self.assertRaises(Blocked):
             await adapter.send_text(-1000000000010,42,'Should not send',5)
+
+    async def test_document_upload_keeps_original_bytes_across_peer_and_upload_awaits(self):
+        for boundary in ('peer','upload'):
+            with self.subTest(boundary=boundary), tempfile.TemporaryDirectory() as tmp:
+                document=Path(tmp)/'result.md'
+                document.write_bytes(b'Original completed report')
+                class MutatingClient(Client):
+                    async def get_input_entity(self, group):
+                        if boundary=='peer':
+                            document.write_bytes(b'Altered during peer lookup')
+                        return await super().get_input_entity(group)
+                    async def upload_file(self, payload, *, file_name=None):
+                        if boundary=='upload':
+                            document.write_bytes(b'Altered before SDK reads upload')
+                        self.uploaded=payload if isinstance(payload,bytes) else Path(payload).read_bytes()
+                        self.uploaded_name=file_name
+                        return await super().upload_file(payload,file_name=file_name)
+                client=MutatingClient(); adapter=TelethonAdapter(client)
+                await adapter.allowed_groups(7)
+                await adapter.send_document(-1000000000010,42,document,5)
+                self.assertEqual(client.uploaded,b'Original completed report')
+                self.assertEqual(client.uploaded_name,'result.md')
 
     async def test_general_reports_omit_top_message_for_text_and_document(self):
         client=Client()
