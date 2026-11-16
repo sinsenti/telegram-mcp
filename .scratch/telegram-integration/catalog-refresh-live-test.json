@@ -1,0 +1,54 @@
+{
+  "verifiedAt": "2026-11-16T12:43:25.678Z",
+  "status": "passed",
+  "desktopOriginRename": {
+    "desktop": {
+      "source": "desktop",
+      "count": 11,
+      "project": {
+        "id": "c18094d8-b906-4609-834d-1f4a741fe843",
+        "name": "help catalog refresh check",
+        "path": "/home/user/git/personal/help"
+      }
+    },
+    "standalone": {
+      "source": "standalone",
+      "count": 11,
+      "project": {
+        "id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+        "name": "help catalog refresh check",
+        "roots": [
+          "/home/user/git/personal/help"
+        ]
+      }
+    }
+  },
+  "desktopOriginRestore": {
+    "desktop": {
+      "source": "desktop",
+      "count": 11,
+      "project": {
+        "id": "c18094d8-b906-4609-834d-1f4a741fe843",
+        "name": "help",
+        "path": "/home/user/git/personal/help"
+      }
+    },
+    "standalone": {
+      "source": "standalone",
+      "count": 11,
+      "project": {
+        "id": "01a1df7d-648f-7942-a075-ae429872b8cd",
+        "name": "help",
+        "roots": [
+          "/home/user/git/personal/help"
+        ]
+      }
+    }
+  },
+  "previousServerOriginProbe": {
+    "desktopObservedTemporaryName": false,
+    "originalNameRestored": true,
+    "explanation": "Desktop updates the server and its own cache; server-origin updates do not refresh the desktop label cache."
+  },
+  "conclusion": "The real desktop-origin name change and restoration were observed by fresh standalone catalog reads with stable IDs, unchanged root, and unchanged 11-project count."
+}

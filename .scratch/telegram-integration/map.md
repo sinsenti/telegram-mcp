@@ -10,7 +10,10 @@ Implementation branch: `integration/telegram-codex`. The approved spec and numbe
 
 - [Ticket 03](./issues/03-read-complete-discussions-and-find-tasks.md#answer) is resolved after the final raw-page adapter successfully read the selected message/replies and whole topic with correct distinct scopes and link identities. [Evidence](./discussion-read-live-test.json).
 
+- [Ticket 04](./issues/04-complete-tasks-using-document-and-image-attachments.md#answer) is resolved after approved real five-format interpretation, original preservation and source-specific Markdown round-trip verification. [Evidence](./attachments-live-test.json). Stage 1 is complete.
+
+- [Ticket 01](./issues/01-discover-existing-codex-projects.md#answer) is resolved after the approved desktop-origin rename and restoration were verified in both catalog views with stable identities and roots. [Evidence](./catalog-refresh-live-test.json).
+
 ## Fog
 
-- Ticket 01 still needs a live project-change catalog refresh check; the pending one-chat Telegram test approval did not authorize project renaming.
-- Ticket 04 attachment interpretation is now unblocked.
+- Ticket 05 real-project routing is now unblocked. Tickets 05–14 remain to implement.

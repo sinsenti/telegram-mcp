@@ -37,9 +37,11 @@ Tickets 01 and 02 can start independently. Ticket 01 must establish a supported 
 
 ## Current implementation status
 
-Tickets 02 and 03 are resolved; ticket 01 remains `needs-info`:
+Tickets 01–04 are resolved; stage 1 is complete:
 
-- 01: the experimental standalone catalog matches all 11 existing desktop projects by name and directory. A controlled real-project change still needs to demonstrate live refresh; see [catalog evidence](../../docs/research/project-catalog.md).
+- 01: the desktop-origin rename and restoration were observed in both catalog views with stable IDs and directories; see [live evidence](./catalog-refresh-live-test.json).
 - 02: the approved live manual text task completed in one real Codex chat, and its text/Markdown replies were verified in the original Telegram topic, including a byte-for-byte file comparison; see [evidence](./manual-workflow-live-test.json).
 
-Ticket 03 is resolved after successful bounded live reads using the final raw-page adapter. Both message-with-replies and whole-topic scopes, completeness, and private-link identities were verified; see [evidence](./discussion-read-live-test.json). Ticket 04 is now unblocked. Tickets 04–14 remain unimplemented. The approved test created one Codex chat and two source replies; subsequent checks were read-only. Project renaming and unrelated live test tasks remain unauthorized.
+Ticket 03 is resolved after successful bounded live reads using the final raw-page adapter. Both message-with-replies and whole-topic scopes, completeness, and private-link identities were verified; see [evidence](./discussion-read-live-test.json).
+
+Ticket 04 is resolved after the approved five-file live test: actual Codex interpretation, unchanged originals, same-chat/folder follow-up, source-specific replies and downloaded Markdown equality all passed. [Evidence](./attachments-live-test.json). All 51 root tests pass. Ticket 05 is now unblocked; tickets 05–14 remain unimplemented. No additional new chat was created; the attachment test used exactly one follow-up in the existing test chat.

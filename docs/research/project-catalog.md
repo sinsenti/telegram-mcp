@@ -1,6 +1,6 @@
 # Existing Codex project catalog investigation
 
-Verified on 2026-11-16 with Codex CLI 0.169.0. A callable, refreshable **experimental** catalog is available through standalone app-server `project/list`. Ticket 01 remains `needs-info` solely for the outstanding real-project-change acceptance check.
+Verified on 2026-11-16 with Codex CLI 0.169.0. A callable, refreshable **experimental** catalog is available through standalone app-server `project/list`. Ticket 01 is resolved after the desktop-origin rename and restoration check below.
 
 ## Corrected identity finding
 
@@ -57,15 +57,15 @@ Run the contract checks with:
 python3 -m unittest discover -s tests -p 'test_catalog.py'
 ```
 
-## Remaining acceptance gap
+## Original acceptance gap (resolved below)
 
-No project was changed during this investigation. Repeated unchanged real reads and a fixture mutation do not demonstrate refresh after a real desktop project change, including server-to-desktop propagation. The consumer and experimental source are usable now, but ticket 01 remains unresolved until this check passes.
+At the initial investigation stage, no project had been changed. Repeated unchanged real reads and a fixture mutation do not demonstrate refresh after a real desktop project change, including server-to-desktop propagation. The consumer and experimental source are usable now, but ticket 01 remains unresolved until this check passes.
 
 A concrete reversible test, pending explicit authorization, would temporarily rename existing `help` server project `01a1df7d-648f-7942-a075-ae429872b8cd` to `help catalog refresh check` with `project/update` specifying only `projectId` and `name`, read both the refreshed standalone catalog and connected desktop catalog with bounded reconciliation, and restore the exact original name `help` in a `finally` step. Roots, metadata, project count, and chats would remain unchanged. A naturally occurring user rename could alternatively supply this evidence without an agent project write.
 
 No chats/projects were created or imported, no turns were started, and no live project updates were performed. A connected-tool setup export remains only a development aid and is not used by the production adapter.
 
-The proposed mutating JSON-RPC request (not sent) is:
+The server-origin request subsequently used in the approved diagnostic test was:
 
 ```json
 {"id":10,"method":"project/update","params":{"projectId":"01a1df7d-648f-7942-a075-ae429872b8cd","name":"help catalog refresh check"}}
@@ -76,3 +76,9 @@ The compensating restore request must be issued on every path after the rename a
 ```json
 {"id":11,"method":"project/update","params":{"projectId":"01a1df7d-648f-7942-a075-ae429872b8cd","name":"help"}}
 ```
+
+## Completed live acceptance
+
+The [recorded final test](../../.scratch/telegram-integration/catalog-refresh-live-test.json) starts with the desktop Edit project action, not a raw server rename: the user changed only `help` to `help catalog refresh check`, then restored `help` after verification. Both connected desktop and fresh standalone reads observed each saved name. Corresponding desktop/server IDs, the existing working directory, and the 11-project count stayed unchanged. This verifies ongoing source refresh and resolves ticket 01.
+
+The earlier approved server-origin name update was also restored. Eight bounded desktop observations retained the old label because the installed desktop deliberately keeps a separate cache: its own `renameLocal` calls the server `project/update` and then updates that cache, while server record ingestion does not rewrite cached project names. This directionality was confirmed by read-only inspection of the installed application, not by introducing a private-state production adapter. The current catalog uses only the verified experimental server protocol and must still be revalidated on CLI upgrades.
