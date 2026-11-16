@@ -88,6 +88,26 @@ class RecoveryWireTests(unittest.IsolatedAsyncioTestCase):
         script.write_text(SERVER)
         return CodexAppServer([sys.executable,str(script),mode],timeout=3)
 
+    async def test_new_owned_chat_can_start_before_history_is_materialized(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder)
+            script=root/'server.py'
+            script.write_text(SERVER.replace("elif method=='thread/turns/list':", "elif method=='thread/turns/list':\n        emit({'id':m['id'],'error':{'message':'thread is not materialized yet; history unavailable before first user message'}})\n        continue\n    elif method=='unused':"))
+            adapter=CodexAppServer([sys.executable,str(script),'accepted'],timeout=3)
+            async def accepted(turn_id): (root/'accepted.txt').write_text(turn_id)
+            try:
+                chat=await adapter.create_chat(root)
+                result=await adapter.run(chat,root,'First request',client_request_id='request-uuid',on_turn_accepted=accepted)
+                self.assertEqual(result.turn_id,'wanted-turn')
+                requests=[json.loads(line)['method'] for line in (root/'requests.jsonl').read_text().splitlines()]
+                self.assertEqual(requests.count('thread/start'),1)
+                self.assertEqual(requests.count('turn/start'),1)
+                self.assertNotIn('thread/turns/list',requests)
+                # The exception applies only to the retained creation owner.
+                with self.assertRaisesRegex(Blocked,'not materialized'):
+                    await adapter.run(chat,root,'Next request',client_request_id='request-uuid')
+            finally: await adapter.aclose()
+
     async def test_acceptance_is_durable_before_waiting_for_completion(self):
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder); adapter=self.adapter(root,'accepted')
