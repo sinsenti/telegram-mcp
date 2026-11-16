@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: Run a manual text task and report its result.
 
-**Status:** claimed
+**Status:** needs-info
 
 - [x] Message and topic links preserve their distinct scopes and validate the actual resolved group.
 - [x] Retrieve historical replies and complete topic history with full text, explicit continuation, and visible completeness; no silent truncation.
@@ -27,6 +27,12 @@ TDD tracer failures were observed for multi-message task execution, numbered sea
 
 ## Remaining acceptance
 
-Status remains claimed. [Read-only live evidence](../discussion-read-live-test.json) verified source3 plus replies4/5, topic2 including its service message, and the private thread/message link in allowed folder8/group-1003989567415. That successful evidence used the pre-raw-pagination Telethon iterator. The final raw-page implementation's bounded read attempt failed during current folder membership revalidation (Telethon iter_dialogs: ValueError Request was unsuccessful 1 time(s), with request_retries=0). Therefore final raw-page live acceptance is still pending; the earlier read is not presented as final-adapter proof.
+Status is **needs-info**. [Read-only live evidence](../discussion-read-live-test.json) verified source3 plus replies4/5, topic2 including its service message, and the private thread/message link in allowed folder8/group-1003989567415. That successful evidence used the pre-raw-pagination Telethon iterator. Subsequent final-adapter attempts encountered a Telegram `FloodWaitError` on `GetDialogsRequest`, then timed out at 60 seconds waiting for folder refresh via `GetDialogFiltersRequest`. Final raw-page live acceptance remains pending; the earlier read is not presented as final-adapter proof. No further immediate retries are planned.
 
 No additional Codex turn/chat, Telegram write, General-topic scan, public-group read, or unrelated history was performed. Nested/sibling reply fixtures, historical multi-page behavior, General, and public-link resolution are hermetic contracts rather than live fixtures. Complete execute/report for both selections is demonstrated through controlled external adapters; the already spent live one-chat authorization was not reused. Parent can run the prepared bounded read-only verification script after merge without reauthentication.
+
+## Review corrections
+
+Review fixes reject an explicitly different follow-up group before retrieval/execution, omit `top_msg_id` for General-topic text and document replies, and refresh explicit-folder/shared-chatlist membership by resolving only included peers instead of repeatedly enumerating the entire account's dialogs. Exclusions, actual peer identity, group type, and fresh membership checks remain enforced. Dynamic group filters retain their existing evaluation.
+
+Both review findings were rechecked after merge. The final root suite passes 37 tests, including the existing QR-login checks; the ticket implementation and review-fix worktree suite passes 31. Ticket 04 remains blocked until final live retrieval acceptance is recorded.
