@@ -48,6 +48,14 @@ and completed output without a usable result remain blockers, never blind retrie
 [Actual adapter evidence](../codex-recovery-live-test.json) verifies supplied UUID
 persistence and recovery of the same accepted turn/result. It also separates
 acknowledged terminal interruption on a resumed owner from rejected fresh-owner
-control and owner-shutdown artifacts. Fresh-owner interruption is a ticket-12
-control acceptance gap; no exactly-once or atomic concurrent-start guarantee is
-claimed. See [recovery behavior](../../../docs/codex-recovery.md).
+control and owner-shutdown artifacts. A later wire probe verified fresh-owner
+interruption after the exact turn/started event; the adapter now gates control
+on that event. No exactly-once or atomic concurrent-start guarantee is claimed. See [recovery behavior](../../../docs/codex-recovery.md).
+
+
+Final control diagnosis: accepted turn/start response can precede actual control
+readiness. Fresh same-owner interruption succeeded after turn/started, with ACK
+and interrupted terminal event before owner shutdown. A red-first public wire
+regression now covers this registration race; missing readiness and already
+terminal turns are bounded/explicit and do not send speculative control RPCs.
+Cross-process control was not attempted because the owned route succeeded.

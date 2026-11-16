@@ -46,11 +46,17 @@ On a resumed test-owned chat, an immediate same-owner interrupt received an
 acknowledgment and a terminal interrupted event before that owner was closed;
 subsequent exact history readback also returned interrupted.
 
-Fresh creation-owner control behaves differently in the tested installation:
-interruption returned “no active turn to interrupt” and same-owner paginated
-history returned “list_turns is not supported yet” while the turn continued to
-completion. A later interrupted status after a callback exception closed the
-owner does not prove that the rejected interrupt caused it. Fresh-owner control
-remains a separate acceptance gap under investigation; the adapter preserves
-such rejections as unresolved control outcomes. Cross-process control and atomic
-protection against concurrent desktop starts remain unverified.
+The first fresh-owner probes sent interruption immediately after the accepted
+response and received “no active turn to interrupt”. A targeted wire probe then
+waited for the exact `turn/started` event and verified a successful fresh-owner
+acknowledgment plus terminal interrupted event before shutdown. The dispatcher
+now tracks that event without consuming the execution event stream; interruption
+waits for it, bounded by the configured timeout or ten seconds, whichever is less.
+A terminal event observed first prevents sending interruption; missing readiness
+remains an explicit blocker. Earlier rejected RPCs remain recorded as rejected.
+
+Active fresh-owner paginated history returned “list_turns is not supported yet”
+in earlier probes, so live completion still relies on the owned event stream.
+Cross-process interruption was not exercised because same-owner control succeeded;
+there is no speculative fallback. Atomic protection against concurrent desktop
+starts remains unsupported.
