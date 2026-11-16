@@ -9,13 +9,15 @@
 - [ ] Produce reproducible evidence comparing the catalog with existing desktop projects, including updates after projects change.
 - [x] Distinguish desktop saved projects from standalone experimental project records; do not create or import duplicate projects.
 - [x] A setup snapshot is identified only as a development aid and does not satisfy ongoing discovery.
-- [x] If no supported source can be established, record the concrete limitation and keep this ticket and dependent routing work unresolved.
-- [ ] Demonstrate a consumer selecting a known project and obtaining its verified destination; preserve the successful known-directory connection evidence.
+- [ ] If no supported source can be established, record the concrete limitation and keep this ticket and dependent routing work unresolved.
+- [x] Demonstrate a consumer selecting a known project and obtaining its verified destination; preserve the successful known-directory connection evidence.
 
 ## Investigation result
 
-2026-11-16: [Catalog evidence and reproduction](../../../docs/research/project-catalog.md). Two connected desktop catalog reads agree on 11 existing projects and the known `help` project's identity/destination. The preserved approved connection evidence is unchanged. No supported standalone listener transport to that desktop catalog, or refresh-after-change contract, has been established. Installed private runtime code maintains legacy/server identifier mappings; experimental `project/list` alone does not demonstrate desktop discovery.
+2026-11-16: [Corrected catalog evidence, adapter usage, and remaining acceptance](../../../docs/research/project-catalog.md).
 
-No speculative adapter was added. Standalone probe initialization also requires SQLite writes outside the current sandbox, so it was stopped without broadening access. There were no live external writes.
+A real standalone `project/list` probe matches all 11 desktop projects exactly by name and directory. Desktop-tool and server project IDs differ; the earlier failed `project/read` with a desktop ID was insufficient evidence of separate catalogs. The installed experimental CLI protocol provides a callable source, with explicit experimental opt-in and upgrade revalidation required.
 
-**Remaining blocker:** establish supported read-only desktop-catalog access from a standalone process, verify identity/name/directory refresh after an authorized or naturally occurring project change, and then demonstrate an application consumer. Ticket 01 and dependent automatic routing remain unresolved. A repeated connected read or exported setup snapshot cannot satisfy these acceptance items.
+Added `CodexProjectCatalog.refresh()` and `destination(server_project_id)`; actual adapter reads selected the known `help` server ID and returned `/home/user/git/personal/help`, preserving the original connection evidence. TDD subprocess-wire checks cover pagination, refreshed changes/removal, and invalid metadata. No private desktop state or setup snapshot is used as the source.
+
+**Remaining blocker:** demonstrate fresh catalog observations after a real desktop project change. No project writes are authorized for this investigation. The linked evidence describes a concrete temporary rename-and-restore test for review, or a naturally occurring user change can supply the missing check. Therefore ticket 01 remains `needs-info`; full automatic routing acceptance remains unresolved until that evidence exists.
