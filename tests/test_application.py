@@ -97,7 +97,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.telegram.reports,[])
 
     async def test_partial_remote_report_is_not_blindly_retried(self):
-        async def uncertain(*args):
+        async def uncertain(*args,**kwargs):
             raise TimeoutError('Report acknowledgment lost; inspect Telegram before retry')
         self.telegram.send_text = uncertain
         result = await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
@@ -118,7 +118,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.telegram.reports),1)
 
     async def test_execution_blocker_is_reported_to_source(self):
-        async def fail(*args):
+        async def fail(*args,**kwargs):
             raise RuntimeError('Permission decision required')
         self.codex.run = fail
         result = await self.app.handle({'action':'task','group_id':10,'message_id':42,'destination':'test'})
@@ -135,7 +135,7 @@ class ApplicationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.codex.chats,[])
 
     async def test_unknown_creation_and_execution_outcomes_cannot_continue(self):
-        async def uncertain(*args):
+        async def uncertain(*args,**kwargs):
             raise TimeoutError('Codex acknowledgment lost; inspect chat')
         for phase in ('creating_chat','executing'):
             with self.subTest(phase=phase):
