@@ -297,6 +297,7 @@ class TelethonAdapter:
                 attributes=[types.DocumentAttributeFilename(document.name)]),message='',
             random_id=random_id,reply_to=types.InputReplyToMessage(message_id,top_msg_id=None if topic_id == 1 else topic_id)))
         return self._message_id(result,random_id)
+
     async def topic_title(self, group_id, topic_id):
         peer=await self._peer(group_id)
         result=await self.client(functions.messages.GetForumTopicsByIDRequest(peer=peer,topics=[topic_id]))

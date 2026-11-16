@@ -302,7 +302,7 @@ class Application:
         return dict(task,status='linked')
 
     async def _chat_command(self, c):
-        # Listener owns fresh human-author/generation eligibility. This boundary
+        # Normalized event admission owns fresh author/generation eligibility. This boundary
         # independently resolves the actual source topic and never scans context.
         text = c.get('text','').strip()
         if text != '#link' and not (text.isascii() and text.isdecimal()):
