@@ -1,0 +1,138 @@
+{
+  "phase": "verified",
+  "group_id": -1003989567415,
+  "topic_id": 21,
+  "folder_id": 8,
+  "document": "/home/user/git/personal/telegram-mcp/.worktrees/review-09-14-fixes/.local/frozen-report-6c2b72d32a55.md",
+  "filename": "frozen-report-6c2b72d32a55.md",
+  "original_sha256": "589fcbdcb0a7bf0f401a4dcd67d9f8768d389a13d50b20f1875ae30daba31589",
+  "random_id": 5858437362689541273,
+  "upload_hooks": [
+    {
+      "payload_type": "bytes",
+      "payload_sha256": "589fcbdcb0a7bf0f401a4dcd67d9f8768d389a13d50b20f1875ae30daba31589",
+      "file_name": "frozen-report-6c2b72d32a55.md",
+      "local_path_sha256": "13dad175654e1ae4bbc3ad5541551c2ab0ff5472a3e06acb229d66a5055c3676"
+    },
+    {
+      "payload_type": "bytes",
+      "payload_sha256": "589fcbdcb0a7bf0f401a4dcd67d9f8768d389a13d50b20f1875ae30daba31589",
+      "file_name": "frozen-report-6c2b72d32a55.md",
+      "local_path_sha256": "13dad175654e1ae4bbc3ad5541551c2ab0ff5472a3e06acb229d66a5055c3676"
+    }
+  ],
+  "rpc_responses": [
+    {
+      "method": "SendMediaRequest",
+      "type": "Updates",
+      "mappings": [
+        {
+          "random_id": 5858437362689541273,
+          "message_id": 40
+        }
+      ]
+    },
+    {
+      "method": "SendMediaRequest",
+      "type": "Updates",
+      "mappings": [
+        {
+          "random_id": 5858437362689541273,
+          "message_id": 40
+        }
+      ]
+    }
+  ],
+  "mappings": [
+    {
+      "random_id": 5858437362689541273,
+      "message_id": 40
+    }
+  ],
+  "no_codex_turns": true,
+  "integration_commit": "f7e85b48c1cf8ca5f8b8a96f37a0a82561e7a438",
+  "lost_ack_injected_after_remote_response": true,
+  "replayed_message_id": "40",
+  "verified_at": "2026-11-16T14:57:40.392368+00:00",
+  "file_count": 1,
+  "downloaded_sha256": "589fcbdcb0a7bf0f401a4dcd67d9f8768d389a13d50b20f1875ae30daba31589",
+  "original_path_remains_mutated": true,
+  "prior_text_upload_replay_evidence": {
+    "phase": "verified",
+    "group_id": -1003989567415,
+    "topic_id": 21,
+    "text": "DELIVERY_REPLAY_CHECK_e55faecc7687",
+    "text_random_id": 4789734561333280678,
+    "file_random_id": 3205731757033381443,
+    "document": "/home/user/git/personal/telegram-mcp/.local/delivery-replay-e55faecc7687.md",
+    "document_sha256": "53cea2b3931adf150978d6b153773cef184419627d612cc6728dc6b00292c712",
+    "mappings": [
+      {
+        "random_id": 4789734561333280678,
+        "message_id": 38
+      },
+      {
+        "random_id": 4789734561333280678,
+        "message_id": 38
+      },
+      {
+        "random_id": 3205731757033381443,
+        "message_id": 39
+      },
+      {
+        "random_id": 3205731757033381443,
+        "message_id": 39
+      }
+    ],
+    "text_first_id": "38",
+    "text_replay_id": "38",
+    "file_first_id": "39",
+    "file_replay_id": "39",
+    "verifiedAt": "2026-11-16T14:31:26.774945+00:00",
+    "text_count": 1,
+    "file_count": 1,
+    "rpc_responses": [
+      {
+        "method": "SendMessageRequest",
+        "type": "Updates",
+        "mappings": [
+          {
+            "random_id": 4789734561333280678,
+            "message_id": 38
+          }
+        ]
+      },
+      {
+        "method": "SendMessageRequest",
+        "type": "Updates",
+        "mappings": [
+          {
+            "random_id": 4789734561333280678,
+            "message_id": 38
+          }
+        ]
+      },
+      {
+        "method": "SendMediaRequest",
+        "type": "Updates",
+        "mappings": [
+          {
+            "random_id": 3205731757033381443,
+            "message_id": 39
+          }
+        ]
+      },
+      {
+        "method": "SendMediaRequest",
+        "type": "Updates",
+        "mappings": [
+          {
+            "random_id": 3205731757033381443,
+            "message_id": 39
+          }
+        ]
+      }
+    ],
+    "no_codex_turns": true
+  }
+}

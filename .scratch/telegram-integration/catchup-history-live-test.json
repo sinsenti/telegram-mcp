@@ -1,0 +1,61 @@
+{
+  "timestamp": "2026-11-16T14:55:33.706605+00:00",
+  "group_id": -1003989567415,
+  "after": 35,
+  "page_size": 2,
+  "mode": "read-only adapter history; no Application admission/execution",
+  "pages": [
+    [
+      {
+        "message_id": 36,
+        "group_id": -1003989567415,
+        "kind": "history_message",
+        "created_at": "2026-11-16T14:04:47+00:00",
+        "edited": false,
+        "forwarded": false
+      },
+      {
+        "message_id": 37,
+        "group_id": -1003989567415,
+        "kind": "history_message",
+        "created_at": "2026-11-16T14:04:48+00:00",
+        "edited": false,
+        "forwarded": false
+      }
+    ],
+    [
+      {
+        "message_id": 38,
+        "group_id": -1003989567415,
+        "kind": "history_message",
+        "created_at": "2026-11-16T14:31:22+00:00",
+        "edited": false,
+        "forwarded": false
+      },
+      {
+        "message_id": 39,
+        "group_id": -1003989567415,
+        "kind": "history_message",
+        "created_at": "2026-11-16T14:31:23+00:00",
+        "edited": false,
+        "forwarded": false
+      }
+    ]
+  ],
+  "history_requests": [
+    {
+      "peer": -1003989567415,
+      "offset_id": 36,
+      "add_offset": -2,
+      "limit": 2
+    },
+    {
+      "peer": -1003989567415,
+      "offset_id": 38,
+      "add_offset": -2,
+      "limit": 2
+    }
+  ],
+  "status": "passed",
+  "connection_closed": true
+}
