@@ -22,6 +22,10 @@ class Monitoring:
         """Unfinished external Codex work blocks every new execution owner."""
         if self.app.db.execute("SELECT 1 FROM trigger_requests WHERE status IN ('running','uncertain') LIMIT 1").fetchone():
             return True
+        return self.has_unfinished_execution()
+
+    def has_unfinished_execution(self):
+        """Known external intents may still own remote execution after a crash."""
         return any(task.get('phase') in ('creating_chat','executing')
                    for (data,) in self.app.db.execute('SELECT data FROM tasks') for task in [json.loads(data)])
 
@@ -52,6 +56,29 @@ class Monitoring:
                         and previous.get('phase') == 'reporting'):
                     request['outcome']=task
                     app.db.execute("UPDATE trigger_requests SET status='finished',data=? WHERE sequence=? AND status='blocked'",(json.dumps(request),sequence))
+
+    def recover_unbound(self):
+        """A claim without a bound task precedes every external task effect."""
+        app=self.app
+        with app.db:
+            for sequence,data in app.db.execute("SELECT sequence,data FROM trigger_requests WHERE status='running'").fetchall():
+                if not json.loads(data).get('task_id'):
+                    app.db.execute("UPDATE trigger_requests SET status='pending' WHERE sequence=? AND status='running'",(sequence,))
+
+    def record_recovery_outcome(self, task):
+        """Reconcile only the current claimed run; retain historical outcomes."""
+        self.update_matching_delivery_outcome(task)
+        app=self.app
+        with app.db:
+            for sequence,data in app.db.execute("SELECT sequence,data FROM trigger_requests WHERE status IN ('running','uncertain')").fetchall():
+                request=json.loads(data)
+                if request.get('task_id')!=task['task_id']: continue
+                previous=request.get('outcome',{})
+                if previous.get('run',task['run'])!=task['run']: continue
+                status='finished' if task.get('status')=='finished' else 'blocked'
+                if task.get('phase') in ('creating_chat','executing'): status='uncertain'
+                request['outcome']=task
+                app.db.execute('UPDATE trigger_requests SET status=?,data=? WHERE sequence=?',(status,json.dumps(request),sequence))
 
     async def handle(self, c, *, replay=False, commit=True, access_checked=False):
         app=self.app

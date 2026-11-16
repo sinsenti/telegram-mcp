@@ -426,6 +426,39 @@ class Application:
         return {'status':'unresolved','observations':observations,
                 'reason':'Project placement could not be reconciled; inspect before continuing'}
 
+    def _store_result(self, task, result):
+        folder=Path(task['folder'])
+        task.update(turn_id=result.turn_id, explanation=result.explanation,
+                    result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
+        (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
+        task['phase']='terminal_result'
+        self._save(task)
+
+    async def _finish_result(self, task, result, inputs):
+        folder=Path(task['folder'])
+        self._store_result(task,result)
+        if task.get('project_id'):
+            task['placement']=await self._placement(task)
+        (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
+        if result.status != 'completed':
+            raise Blocked(result.explanation)
+        if task.get('placement',{}).get('status') == 'unresolved':
+            raise Blocked(task['placement']['reason'])
+        validate_evidence(inputs,result.input_evidence)
+        for item in inputs:
+            owned_directory(Path(item.path).parent)
+            if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
+                raise Blocked(f'{item.original_name}: preserved original changed during execution')
+        task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
+        document = folder/f"result-{task['run']}.md"
+        document.write_text(result.markdown)
+        task['document'] = str(document)
+        task['document_sha256'] = digest(document)
+        task['reporting_version'] = 1
+        self._save(task)
+        if task.get('status') != 'paused':
+            await self._deliver_reports(task)
+
     async def _start_captured(self, task, text, inputs):
         """Initiate each external operation only after its durable intent exists."""
         await self._task_access(task)
@@ -465,6 +498,9 @@ class Application:
             return await self._link(c)
         if action == 'chat_command':
             return await self._chat_command(c)
+        if action == 'recover':
+            from .recovery import Recovery
+            return await Recovery(self).recover(c.get('task_id'))
         if action == 'reconcile_reports':
             if not c.get('task_id'):
                 return await self.outgoing.reconcile()
@@ -555,7 +591,7 @@ class Application:
                           and task.get('phase') in ('capturing_inputs','terminal_result')
                           and not task.get('report_blocker')
                           and task.get('placement',{}).get('status') != 'unresolved')
-            paused_continuation=(task['status']=='paused' and task.get('chat_id') and task.get('phase') in ('terminal_result','reporting','complete'))
+            paused_continuation=(task['status']=='paused' and task.get('chat_id') and task.get('phase') in ('terminal_result','terminal_interrupted','terminal_failed','reporting','complete'))
             if task['status'] not in ('finished','linked') and not can_continue and not paused_continuation:
                 raise Blocked('Task is not finished; inspect its state before continuing or retrying')
             # Follow-ups may choose a new source only inside the same group.
@@ -598,9 +634,9 @@ class Application:
         (folder/f"context-{task['run']}.json").write_text(json.dumps([asdict(item) for item in context.messages],ensure_ascii=False))
         # These fields describe only the current run. Earlier artifacts remain on disk.
         for key in ('codex_create_intent','client_request_id','turn_id','input_evidence','result_status','explanation','document',
-                    'report_ids','blocker_report_id','report_blocker','document_sha256'):
+                    'report_ids','blocker_report_id','report_blocker','document_sha256','snapshot_sha256','terminal_error'):
             task.pop(key,None)
-        task.update(status='running', reason=None, topic_id=m.topic_id)
+        task.update(status='running', reason=None, topic_id=m.topic_id, phase='capturing_inputs')
         self._save(task)
         if c.get('request_sequence') is not None:
             self.monitoring.bind_task(c['request_sequence'],task)
@@ -670,33 +706,11 @@ class Application:
             if blockers:
                 raise Blocked('; '.join(blockers))
             inputs=tuple(inputs)
+            task['snapshot_sha256']={name:digest(folder/name) for name in (f"input-{task['run']}.txt",f"context-{task['run']}.json",f"inputs-{task['run']}.json")}
+            task['phase']='captured'
+            self._save(task)
             result = await self._start_captured(task,text,inputs)
-            if task.get('project_id'):
-                task['placement']=await self._placement(task)
-            task.update(turn_id=result.turn_id, explanation=result.explanation,
-                        result_status=result.status, input_evidence=[asdict(item) for item in result.input_evidence])
-            (folder/f"run-result-{task['run']}.json").write_text(json.dumps(asdict(result),ensure_ascii=False))
-            task['phase']='terminal_result'
-            self._save(task)
-            (folder/f"evidence-{task['run']}.json").write_text(json.dumps(task['input_evidence'],ensure_ascii=False))
-            if result.status != 'completed':
-                raise Blocked(result.explanation)
-            if task.get('placement',{}).get('status') == 'unresolved':
-                raise Blocked(task['placement']['reason'])
-            validate_evidence(inputs,result.input_evidence)
-            for item in inputs:
-                owned_directory(Path(item.path).parent)
-                if Path(item.path).is_symlink() or digest(item.path)!=item.sha256:
-                    raise Blocked(f'{item.original_name}: preserved original changed during execution')
-            task.update(turn_id=result.turn_id, explanation=result.explanation, phase='reporting')
-            document = folder/f"result-{task['run']}.md"
-            document.write_text(result.markdown)
-            task['document'] = str(document)
-            task['document_sha256'] = digest(document)
-            task['reporting_version'] = 1
-            self._save(task)
-            if task.get('status') != 'paused':
-                await self._deliver_reports(task)
+            await self._finish_result(task,result,inputs)
         except Exception as exc:
             task.update(status='blocked', reason=str(exc))
             if task.get('phase') != 'reporting':
